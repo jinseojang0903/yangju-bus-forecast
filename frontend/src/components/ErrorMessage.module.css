@@ -1,0 +1,44 @@
+.box {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 14px 16px;
+  background: var(--color-warning-bg);
+  border: 2px solid var(--color-warning-border);
+  border-radius: var(--radius);
+}
+
+.compact {
+  padding: 8px 12px;
+  border-width: 1px;
+}
+
+.title {
+  font-weight: 700;
+}
+
+.title::before {
+  content: "! ";
+}
+
+.detail {
+  font-size: 0.875rem;
+  color: var(--color-muted);
+}
+
+.button {
+  min-height: 40px;
+  padding: 6px 14px;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-small);
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.link {
+  color: var(--color-primary);
+  font-weight: 600;
+}

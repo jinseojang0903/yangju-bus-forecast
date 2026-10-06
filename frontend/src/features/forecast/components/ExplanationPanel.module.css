@@ -1,0 +1,57 @@
+/* 설명은 3문장 이내(계약 4.5). 360px 에서 3문장이 들어갈 높이를 미리 잡아 둔다. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 10.5rem;
+  padding: 12px 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.heading {
+  font-size: 0.9375rem;
+}
+
+.text {
+  font-size: 0.9375rem;
+}
+
+.source {
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+.muted {
+  font-size: 0.875rem;
+  color: var(--color-muted);
+}
+
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.line,
+.lineShort {
+  display: block;
+  height: 0.9rem;
+  border-radius: 4px;
+  background: var(--color-skeleton);
+}
+
+.lineShort {
+  width: 60%;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

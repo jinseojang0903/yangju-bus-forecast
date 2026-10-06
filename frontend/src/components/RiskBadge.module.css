@@ -1,0 +1,29 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border: 2px solid currentColor;
+  border-radius: 999px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.symbol {
+  font-size: 0.8em;
+}
+
+.high {
+  color: var(--color-risk-high);
+  background: var(--color-risk-high-bg);
+}
+
+.medium {
+  color: var(--color-risk-medium);
+  background: var(--color-risk-medium-bg);
+}
+
+.low {
+  color: var(--color-risk-low);
+  background: var(--color-risk-low-bg);
+}
