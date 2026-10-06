@@ -32,3 +32,13 @@ def setup_api_logging(settings: Settings) -> None:
     handler.addFilter(RedactingFilter(Redactor(settings.secret_values())))
     setattr(handler, _HANDLER_MARK, True)
     logger.addHandler(handler)
+
+    # uvicorn 자체 오류 로그는 'app' 아래가 아니어서 위 핸들러를 거치지 않는다.
+    # 그쪽에도 가림 필터를 단다.
+    uvicorn_logger = logging.getLogger("uvicorn.error")
+    for old_filter in list(uvicorn_logger.filters):
+        if getattr(old_filter, _HANDLER_MARK, False):
+            uvicorn_logger.removeFilter(old_filter)
+    uvicorn_filter = RedactingFilter(Redactor(settings.secret_values()))
+    setattr(uvicorn_filter, _HANDLER_MARK, True)
+    uvicorn_logger.addFilter(uvicorn_filter)

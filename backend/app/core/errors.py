@@ -161,8 +161,17 @@ async def _handle_unexpected_error(request: Request, exc: Exception) -> JSONResp
     return _error_response(500, "INTERNAL_ERROR")
 
 
+async def _catch_unexpected_errors(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as exc:
+        return await _handle_unexpected_error(request, exc)
+
+
 def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AppError, _handle_app_error)
     app.add_exception_handler(RequestValidationError, _handle_validation_error)
     app.add_exception_handler(StarletteHTTPException, _handle_http_error)
-    app.add_exception_handler(Exception, _handle_unexpected_error)
+    # add_exception_handler(Exception) 로 두면 Starlette 가 응답 뒤 예외를 다시 던져 uvicorn 이
+    # 'uvicorn.error' 에 추적을 ERROR 로 남긴다. 미들웨어에서 잡아 다시 던지지 않게 한다.
+    app.middleware("http")(_catch_unexpected_errors)

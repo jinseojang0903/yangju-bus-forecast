@@ -65,14 +65,14 @@ class RateLimiter:
             for hits in windows:
                 hits.append(now)
             self._calls_since_prune += 1
-            if (
-                self._calls_since_prune >= _PRUNE_EVERY_CALLS
-                or len(self._hits) > self._max_tracked_keys
-            ):
+            if self._calls_since_prune >= _PRUNE_EVERY_CALLS:
                 self._prune(now)
+            self._evict_overflow()
             return None
 
     def _prune(self, now: float) -> None:
+        # 전체를 훑으므로 호출 주기로만 돈다. 상한 초과마다 돌리면 키가 상한 근처일 때
+        # 요청마다 O(키 수) 작업이 이벤트 루프를 막는다.
         self._calls_since_prune = 0
         expired = []
         for key, (window_sec, hits) in self._hits.items():
@@ -83,10 +83,13 @@ class RateLimiter:
                 expired.append(key)
         for key in expired:
             del self._hits[key]
+
+    def _evict_overflow(self) -> None:
         overflow = len(self._hits) - self._max_tracked_keys
-        if overflow > 0:
-            # 서로 다른 클라이언트가 비정상적으로 많다. 메모리를 지키려고 가장 오래 안 쓴 키부터
-            # 내보낸다. 최근에 쓴 키(예: 진행 중인 하루 제한 기록)는 남는다.
-            logger.warning("rate_limit_evict evicted=%d tracked_keys=%d", overflow, len(self._hits))
-            for _ in range(overflow):
-                self._hits.popitem(last=False)
+        if overflow <= 0:
+            return
+        # 서로 다른 클라이언트가 비정상적으로 많다. 메모리를 지키려고 넘친 만큼만 가장 오래 안 쓴
+        # 키부터 내보낸다. 최근에 쓴 키(예: 진행 중인 하루 제한 기록)는 남는다.
+        logger.warning("rate_limit_evict evicted=%d tracked_keys=%d", overflow, len(self._hits))
+        for _ in range(overflow):
+            self._hits.popitem(last=False)

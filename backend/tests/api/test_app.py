@@ -38,6 +38,19 @@ def test_unexpected_error_is_500_without_details(app_factory: AppFactory) -> Non
     body = assert_error(response, 500, "INTERNAL_ERROR")
     assert body["error"]["details"] == []
     assert "secret" not in response.text
+
+
+def test_unexpected_error_is_not_reraised_to_server(app_factory: AppFactory) -> None:
+    # 다시 던지면 uvicorn 이 추적을 ERROR 로 남긴다. 기본 TestClient 는 다시 던진 예외를 올린다.
+    app = app_factory()
+
+    def broken_service() -> None:
+        raise ValueError("secret internal detail")
+
+    app.dependency_overrides[get_station_service] = broken_service
+    response = TestClient(app).get(f"{API}/stations")
+
+    assert_error(response, 500, "INTERNAL_ERROR")
     assert "path" not in response.text
 
 
