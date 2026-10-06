@@ -99,7 +99,7 @@ type RiskLevel = "high" | "medium" | "low";     // high: p ≥ 0.7, low: p < 0.3
 | 둘 다 안 | | `service.state = "in_service"` |
 
 - 화면은 `outside_*` 일 때 오류나 '정보 오래됨'이 아니라 **"지금은 예보 시간이 아니에요"** 와 `service.nextForecastStartAt`(다음 예보 시작 시각)을 보여 준다.
-- `nextForecastStartAt` = 다음 평일 05:45(06:00 도착 버스의 15분 예보가 나오는 시각). 값은 설정에 있다. 공휴일 처리 방식은 미정(10장).
+- `nextForecastStartAt` = 다음 평일 05:45(06:00 도착 버스의 15분 예보가 나오는 시각). 설정의 공휴일 목록(초기값 `2026-10-09`)에 있는 날은 건너뛴다. 시각과 공휴일 목록은 설정 모듈에 있다(사용자 결정 2026-10-06).
 - **과거 시점 재생 기능은 만들지 않는다.** 본선 시연은 평일 아침 실제 화면을 녹화한 영상으로 한다. 예보 스냅샷은 계획대로 모두 저장한다(F07).
 
 ## 3. 엔드포인트 한눈에
@@ -134,7 +134,7 @@ type RiskLevel = "high" | "medium" | "low";     // high: p ≥ 0.7, low: p < 0.3
 ```
 
 ### 4.2 GET /api/v1/health/detail
-팀 운영용 상세 응답. 접근 제한 방식은 미정(10장, 의견: 설정의 토큰 헤더 또는 서버 내부에서만).
+팀 운영용 상세 응답. 요청 헤더 `X-Health-Token` 이 `.env` 의 `HEALTH_DETAIL_TOKEN` 과 같아야 한다(사용자 결정 2026-10-06). 헤더가 없거나 틀리면, 또는 서버에 토큰이 설정되지 않았으면 경로의 존재를 드러내지 않도록 `404 NOT_FOUND` 로 답한다. 토큰 비교는 상수 시간 비교를 쓴다.
 
 ```ts
 {
@@ -226,7 +226,8 @@ interface Bus {
   source: "arrival_1st" | "arrival_2nd" | "timetable_next";  // 후보 출처(고정 규칙)
   stationArrivalAt: Timestamp | null;   // 내 정류장 도착 = 데이터 시각 + 도착 예상
   arrivalEstimateSource: "predict_time_sec" | "predict_time_min" | "timetable" | null;
-  // predict_time_sec: GBIS predictTimeSec(초). predict_time_min: 초 값이 없어 predictTime(분)×60 으로 대신함(정밀도 낮음). timetable: 시간표상 다음 차
+  // predict_time_sec: GBIS predictTimeSec(초). predict_time_min: 초 값이 없어 predictTime(분)×60 으로 대신함(정밀도 낮음, 임시 승인). timetable: 시간표상 다음 차
+  // 이 값은 예보 스냅샷에도 저장해, 분 값으로 대신한 예보를 평가에서 따로 집계한다
   minutesToArrival: number | null;
   inForecastHours: boolean;             // 도착이 06:00~08:59 이면 true
   currentSeats: number | null;          // 지금 잔여석(-1·없음이면 null)
@@ -446,17 +447,32 @@ interface Alternatives {
 
 ## 10. 미정 (10/7 회의 안건)
 - **선행시간 선택 규칙**: 초기값 "이미 시점이 지난 예보 중 가장 최근". 회의에서 확정해 설정만 바꾼다.
-- **`outside_hours` 상태 추가**: 버스 단위로 예보 시간 밖을 표시하려고 상태값 7번째로 넣었다. CLAUDE.md 의 상태 목록(5종)에 반영할지.
-- **분 단위 도착 예상 대체**: 고정 규칙은 predictTimeSec 이다. 초 값이 없을 때 분×60 으로 대신할지(지금 초안은 대신하고 `arrivalEstimateSource` 로 표시), 아니면 그 버스를 "입력 누락"으로 둘지.
+- **분 단위 도착 예상 대체(임시 승인)**: 초 값이 없을 때 분×60 으로 대신하고 `arrivalEstimateSource: "predict_time_min"` 으로 표시한다. 이 표시는 예보 스냅샷에도 저장해 평가에서 따로 집계한다. 회의에서 확정한다.
+- **서로 다른 선행시간의 확률을 대안 비교에 같이 써도 되는지**: 지금 규칙은 후보마다 자기 `selectedLeadTimeMin` 예보를 쓰므로, 예: G1300 10분 예보와 1306 15분 예보를 나란히 비교하게 된다.
+- **대안 노선(1306) 확률을 검증 전에 어떻게 표시할지**: 공개 판정은 노선별로 따로 나온다. 1306 이 판정 전일 때 대안 비교에 "예비" 확률을 그대로 보일지, 숨길지.
 - **`deadline` 필수 여부**: 지금 초안은 선택(없으면 마감 판정 없이 추천).
 - **정보 오래됨 기준**: 초기값 60초.
-- **공휴일**: 평일 공휴일(10/9)에 예보를 낼지, `outside_collection` 으로 볼지.
-- **/health 공개 범위**: 의견 — 공개 `/health` 는 최소 응답(상태·시각)만, 상세는 `/health/detail` 로 나누고 설정의 토큰 헤더로 막는다. 수집 대상·호출량·실패 횟수는 운영 정보라 공개할 이유가 없다.
 - **호출 제한 값과 CORS 출처**: 배포 위치가 정해지면 확정.
 - **정답 등급**: 엄격만 쓸지, 완화도 쓸지.
+
+결정된 것(2026-10-06): `outside_hours` 상태 추가(상태값 7종), `/health` 공개·상세 분리와 상세의 토큰 헤더, 다음 예보 시작 = 다음 평일 05:45(설정의 공휴일 목록 건너뜀). 설정 공휴일에는 예보하지 않고 `service.state = "outside_collection"` 으로 답한다(수집기는 공휴일에도 수집하고 `is_holiday` 로 표시한다).
+
+## 12. 개발·시연용 가짜 응답 (뼈대 단계)
+실데이터 계산을 붙이기 전까지 백엔드는 가짜 응답을 준다. 설정 `FAKE_DATA=true` 일 때만 `GET /api/v1/snapshot` 에 개발용 쿼리 `scenario` 를 받는다. 운영(`FAKE_DATA=false`)에서는 이 쿼리를 무시한다.
+
+| scenario | 재현하는 것 |
+|---|---|
+| (없음) 또는 `example` | 9장 예시 응답 그대로 |
+| `status_ok`·`status_not_yet`·`status_insufficient_cases`·`status_not_validated`·`status_stale`·`status_missing_input`·`status_outside_hours` | 선택된 예보의 상태가 각 값인 경우 |
+| `alt_recommended`·`alt_no_alternative`·`alt_arrival_unavailable`·`alt_undecidable` | 대안 상태가 각 값인 경우 |
+| `service_outside_collection`·`service_outside_forecast_hours` | 예보 시간이 아닌 경우 |
+| `published` | 공개 판정 통과 후(`preliminary=false`) |
+
+허용 목록 밖의 값은 400 이다. 화면은 개발 중 같은 `scenario` 를 넘겨 각 상태를 그리고 캡처한다.
 
 ## 11. 변경 이력
 | 날짜 | 변경 | 영향 |
 |---|---|---|
 | 2026-10-06 | 새 범위로 처음 작성(회의용 초안) | FE/BE |
 | 2026-10-06 | v2: 선행시간(`not_yet`, `issuedAt`, `selectedLeadTimeMin`), 서비스 시간(`service`), 대안 결정 규칙·`switchSuggested`, 공지·리포트 추후 추가, 호출 제한·CORS, 캐시 10초·`nextRefreshAt`, 설명 대기·`fallbackReason`, `arrivalEstimateSource`, `rulesVersion`, `probability` → `noSeatProbability`, `/health` 공개·상세 분리, 화면 요구(영상 녹화), 예시 응답 | FE/BE |
+| 2026-10-06 | v2 결정 반영: `outside_hours` 승인, 분 단위 대체 임시 승인·스냅샷 저장, `/health/detail` 토큰 헤더(`X-Health-Token`, 없거나 틀리면 404), 다음 예보 시작 05:45·공휴일 목록, 미정 2건 추가, 12장 개발용 `scenario` | FE/BE |

@@ -147,10 +147,11 @@ F03에서 잔여석과 앞차 간격은 사용자가 넣는 값이 아니라 서
 | `GET /api/v1/snapshot?station&destination&deadline` | F02~F04를 같은 계산 시점으로 한 번에 반환 |
 | `POST /api/v1/parse-query` | 자연어 질문 → 조회 조건 |
 | `GET /api/v1/snapshot/{t}/explanation` | LLM 설명 또는 고정 문구 |
-| `GET /api/v1/health` | 수집 상태: 마지막 수집 시각, 오늘 수집 건수, 실패 건수 |
+| `GET /api/v1/health` | 공개용 최소 수집 상태(상태, 시각, 마지막 성공) |
+| `GET /api/v1/health/detail` | 상세 수집 상태. `X-Health-Token` 헤더가 `.env` 의 `HEALTH_DETAIL_TOKEN` 과 같아야 하고, 아니면 404 |
 
 상태값:
-- 예보: 제공 / 사례 부족(20건 미만) / 검증 미통과 / 정보 오래됨 / 입력 누락
+- 예보(7종): 제공 / 아직 시점 전 / 사례 부족(20건 미만) / 검증 미통과 / 정보 오래됨 / 입력 누락 / 예보 시간 아님 — 영문 코드와 뜻은 `docs/api-contract.md` 5장
 - 대안: 추천 / 대안 없음 / 도착시각 미제공 / 판단 불가
 
 FastAPI의 `/docs`(OpenAPI)가 필드 수준 명세 역할을 한다. 계약 파일과 응답 모델(Pydantic)이 어긋나지 않게 한다.
