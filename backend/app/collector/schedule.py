@@ -1,13 +1,19 @@
 """수집 창·공휴일·시계. 시각은 OS 시간대와 무관하게 KST 로 계산한다."""
 
 import math
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from functools import lru_cache
 from typing import Protocol
 
 import holidays
 
-from app.core.settings import COLLECT_WINDOW, KST, TICK_GRACE_SEC
+from app.core.settings import (
+    COLLECT_WINDOW,
+    KST,
+    TICK_GRACE_SEC,
+    TRIAL_INTERVAL_MAX_SEC,
+    TRIAL_INTERVAL_MIN_SEC,
+)
 
 
 class Clock(Protocol):
@@ -82,11 +88,52 @@ def is_today_window_over(moment: datetime) -> bool:
     return local >= end
 
 
-def ceil_to_interval(moment: datetime, interval_sec: int = COLLECT_WINDOW.interval_sec) -> datetime:
-    """다음 주기 경계(분 경계면 초 0). 이미 경계 위면 그대로 둔다."""
+SECONDS_PER_DAY = 86400
+
+
+def _check_interval(interval_sec: int) -> None:
+    # 하루가 간격으로 나누어떨어져야 KST 자정 기준 경계가 매일 같다.
+    if interval_sec <= 0 or SECONDS_PER_DAY % interval_sec != 0:
+        raise ValueError(f"interval_sec 는 86400 의 약수여야 한다: {interval_sec}")
+
+
+def validate_trial_interval(interval_sec: int) -> None:
+    """시운전 간격: 정수 20~60초이고 86400 의 약수. 아니면 ValueError."""
+    if not TRIAL_INTERVAL_MIN_SEC <= interval_sec <= TRIAL_INTERVAL_MAX_SEC:
+        raise ValueError(f"간격은 {TRIAL_INTERVAL_MIN_SEC}~{TRIAL_INTERVAL_MAX_SEC}초여야 한다")
+    if SECONDS_PER_DAY % interval_sec != 0:
+        raise ValueError("간격은 86400(하루 초)을 나누어떨어지게 해야 한다")
+
+
+def _day_start(local: datetime) -> datetime:
+    return datetime.combine(local.date(), time(0, 0), tzinfo=KST)
+
+
+def _offset_sec(local: datetime) -> float:
+    """KST 자정부터 지난 초."""
+    return (local - _day_start(local)).total_seconds()
+
+
+def floor_to_interval(
+    moment: datetime, interval_sec: int = COLLECT_WINDOW.interval_sec
+) -> datetime:
+    """지금 또는 바로 앞의 주기 경계. 경계는 KST 자정 기준 interval_sec 의 배수다."""
+    _check_interval(interval_sec)
     local = to_kst(moment)
-    boundary = math.ceil(local.timestamp() / interval_sec) * interval_sec
-    return datetime.fromtimestamp(boundary, KST)
+    steps = math.floor(_offset_sec(local) / interval_sec)
+    return _day_start(local) + timedelta(seconds=steps * interval_sec)
+
+
+def ceil_to_interval(moment: datetime, interval_sec: int = COLLECT_WINDOW.interval_sec) -> datetime:
+    """다음 주기 경계(60초면 초 0). 이미 경계 위면 그대로 둔다.
+
+    경계는 KST 자정 기준 interval_sec 의 배수다(40초면 10:20:00, 10:20:40, 10:21:20 …).
+    """
+    _check_interval(interval_sec)
+    local = to_kst(moment)
+    steps = math.ceil(_offset_sec(local) / interval_sec)
+    # 자정 직전이면 다음 날 00:00:00 이 된다(86400 이 interval_sec 로 나누어떨어짐).
+    return _day_start(local) + timedelta(seconds=steps * interval_sec)
 
 
 def next_tick(
@@ -101,10 +148,9 @@ def next_tick(
     지났고 그 경계에서 아직 호출하지 않았으면 그 경계를 돌려준다. 아니면 다음 경계.
     """
     local = to_kst(moment)
-    timestamp = local.timestamp()
-    floor = math.floor(timestamp / interval_sec) * interval_sec
-    passed = datetime.fromtimestamp(floor, KST)
-    if timestamp - floor <= grace_sec and (last_tick is None or passed > last_tick):
+    passed = floor_to_interval(local, interval_sec)
+    late_sec = (local - passed).total_seconds()
+    if late_sec <= grace_sec and (last_tick is None or passed > last_tick):
         return passed
     tick = ceil_to_interval(local, interval_sec)
     if last_tick is not None and tick <= last_tick:

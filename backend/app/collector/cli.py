@@ -6,6 +6,7 @@
     run           평일 05:00~10:00(KST) 분 경계마다 수집
                   --exit-after-window: 그날 창이 끝나면 종료
                   --trial-until HH:MM: 시운전(창 무시, 그 시각 전까지, mode=trial)
+                  --interval-sec N: 시운전 전용 간격(20~60초, 86400 의 약수)
     status        오늘 상태를 한 줄 JSON 으로 출력
     save-fixture  실제 응답(위치·도착) 1건씩을 tests/fixtures/gbis/ 에 저장
                   (서비스 키 제거)
@@ -40,12 +41,13 @@ from app.collector.gbis import GbisClient
 from app.collector.lock import AlreadyRunningError, collector_lock, is_collector_running
 from app.collector.logging_setup import quiet_http_loggers, setup_logging
 from app.collector.redact import Redactor, describe_exception
-from app.collector.schedule import Clock, SystemClock, to_kst
+from app.collector.schedule import Clock, SystemClock, to_kst, validate_trial_interval
 from app.collector.status import StatusStore, build_status_report, status_path
 from app.collector.summary import summarize
 from app.core.settings import (
     CALL_LIMITS,
     COLLECT_TARGET,
+    COLLECT_WINDOW,
     ENV_FILE,
     GBIS_BUS_ARRIVAL,
     GBIS_BUS_LOCATION,
@@ -180,6 +182,7 @@ def cmd_run(
     *,
     exit_after_window: bool,
     trial_until: str | None = None,
+    interval_sec: int | None = None,
     clock: Clock | None = None,
 ) -> int:
     """정식 수집(run) 또는 시운전(--trial-until).
@@ -188,7 +191,19 @@ def cmd_run(
     기록의 mode 는 "trial" 이며 평가·사례에서 뺀다.
     한도·잠금·키 가림·JSONL 먼저 쓰기는 정식 수집과 같은 경로를 쓴다.
     잘못된 시각(형식 오류·이미 지남)이면 호출 없이 2 를 돌려준다.
+    interval_sec 는 시운전에서만 받는다(20~60초, 86400 의 약수). 아니면 2.
     """
+    if interval_sec is not None:
+        if trial_until is None:
+            logger.error("interval_sec_rejected reason=trial_only value=%s", interval_sec)
+            print("--interval-sec 는 --trial-until 과 함께일 때만 쓸 수 있다")
+            return EXIT_CONFIG_MISSING
+        try:
+            validate_trial_interval(interval_sec)
+        except ValueError as exc:
+            logger.error("interval_sec_rejected value=%s reason=%s", interval_sec, exc)
+            print(f"--interval-sec {interval_sec}: {exc}")
+            return EXIT_CONFIG_MISSING
     clock = clock or SystemClock()
     until: datetime | None = None
     if trial_until is not None:
@@ -214,6 +229,7 @@ def cmd_run(
                 redactor=redactor,
                 mode=MODE_RUN if until is None else MODE_TRIAL,
                 db_sink=db_sink,
+                interval_sec=interval_sec or COLLECT_WINDOW.interval_sec,
             )
 
             def _stop(signum: int, _frame: FrameType | None) -> None:
@@ -320,6 +336,12 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="HH:MM",
         help="시운전: 창 무시, 오늘 이 시각(KST) 전까지 1분마다(mode=trial)",
     )
+    run.add_argument(
+        "--interval-sec",
+        type=int,
+        metavar="N",
+        help="시운전 전용 수집 간격(20~60초, 86400 의 약수). 기본 60",
+    )
     sub.add_parser("status", help="오늘 상태를 한 줄 JSON 으로 출력")
     sub.add_parser("save-fixture", help="실제 응답을 테스트 픽스처로 저장")
     return parser
@@ -348,6 +370,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 redactor,
                 exit_after_window=args.exit_after_window,
                 trial_until=args.trial_until,
+                interval_sec=args.interval_sec,
             )
         if args.command == "save-fixture":
             return cmd_save_fixture(settings, redactor)

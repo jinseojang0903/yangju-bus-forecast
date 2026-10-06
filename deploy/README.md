@@ -340,7 +340,7 @@ powercfg /change hibernate-timeout-ac 0
 | `uv run python -m app.collector once` | 지금 1회 수집하고 요약 출력 |
 | `uv run python -m app.collector run` | 평일 05~10시 1분마다 수집(계속 실행) |
 | `uv run python -m app.collector run --exit-after-window` | 그날 창이 끝나면 종료(작업 스케줄러용) |
-| `uv run python -m app.collector run --trial-until HH:MM` | 시운전. 수집 창·요일을 무시하고 오늘 그 시각(KST) **전**까지 1분마다 수집한 뒤 종료(예: `--trial-until 11:30` 이면 11:29 호출이 마지막). 기록은 `mode=trial` 로 남아 평가에서 제외한다. 호출 수는 하루 한도에 포함된다. 지난 시각·형식 오류면 종료 코드 2 |
+| `uv run python -m app.collector run --trial-until HH:MM [--interval-sec N]` | 시운전. 수집 창·요일을 무시하고 오늘 그 시각(KST) **전**까지 N초(기본 60)마다 수집한 뒤 종료(예: `--trial-until 11:30` 이면 11:29 호출이 마지막). 경계는 KST 자정 기준 N초의 배수다(40초면 10:20:00, 10:20:40, 10:21:20 …). N 은 20~60 이고 86400 의 약수여야 한다(20·30·40·45·48·60 등). `--interval-sec` 는 `--trial-until` 과 함께일 때만 쓸 수 있다. 기록은 `mode=trial`, `interval_sec=N` 으로 남아 평가에서 제외한다. 호출 수는 하루 한도에 포함된다(40초면 5시간 기준 위치 API 900회). 지난 시각·형식 오류·허용되지 않는 N 이면 종료 코드 2 |
 | `uv run python -m app.collector status` | 오늘 상태 한 줄 JSON |
 | `uv run python -m app.collector save-fixture` | 실제 응답을 `backend/tests/fixtures/gbis/` 에 저장(키 제거) |
 

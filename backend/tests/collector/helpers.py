@@ -110,6 +110,7 @@ def make_collector(
     mode: str = "run",
     sleep: Callable[[float], object] | None = None,
     db_sink: RawPollSink | None = None,
+    interval_sec: int = 60,
 ) -> Collector:
     settings = make_settings(key)
     redactor = Redactor(settings.secret_values())
@@ -124,6 +125,7 @@ def make_collector(
         db_sink=db_sink,
         sleep=sleep or clock.sleep,
         max_sleep_chunk_sec=60.0,
+        interval_sec=interval_sec,
     )
 
 

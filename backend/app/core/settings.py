@@ -59,6 +59,10 @@ COLLECT_WINDOW: Final = CollectWindow()
 # 잠에서 경계보다 늦게 깨어났을 때 그 경계의 호출로 인정하는 여유(초).
 # 운영값이며 규칙 값이 아니다.
 TICK_GRACE_SEC: Final = 5.0
+# 시운전(run --trial-until)에서만 바꿔 볼 수 있는 간격 범위(초). 86400 의 약수여야 한다.
+# 정식 수집 간격은 COLLECT_WINDOW.interval_sec(60초)이며 바꾸지 않는다.
+TRIAL_INTERVAL_MIN_SEC: Final = 20
+TRIAL_INTERVAL_MAX_SEC: Final = 60
 
 
 # ---------------------------------------------------------------------------

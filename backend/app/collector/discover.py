@@ -260,7 +260,7 @@ class _RouteApi:
         )
         prefix = f"{at:%H%M%S}_{self._sequence:02d}"
         name = f"{prefix}_{result.api}_{safe_target}{REFERENCE_RECORD_SUFFIX}"
-        record = build_record(collected_at=at, result=result, mode=MODE_DISCOVER)
+        record = build_record(collected_at=at, result=result, mode=MODE_DISCOVER, interval_sec=None)
         write_json_atomic(self._ref_dir / name, record, self._client.redactor)
 
 

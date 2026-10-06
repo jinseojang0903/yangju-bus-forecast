@@ -180,6 +180,7 @@ def build_status_report(data_dir: Path, now: datetime, *, is_running: bool) -> d
         "pid",
         "mode",
         "in_window",
+        "interval_sec",
         "updated_at",
         "last_attempt_at",
         "last_success_at",
@@ -375,6 +376,9 @@ class StatusStore:
 
     def set_in_window(self, in_window: bool) -> None:
         self.data["in_window"] = in_window
+
+    def set_interval(self, interval_sec: int) -> None:
+        self.data["interval_sec"] = interval_sec
 
     # -- 쓰기 ------------------------------------------------------------------
     def save(self, at: datetime) -> None:

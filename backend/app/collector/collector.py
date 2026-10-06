@@ -103,8 +103,11 @@ class Collector:
         db_sink: RawPollSink | None = None,
         sleep: Callable[[float], object] | None = None,
         max_sleep_chunk_sec: float = 1.0,
+        interval_sec: int = COLLECT_WINDOW.interval_sec,
     ) -> None:
+        """interval_sec 는 정식 수집에서는 60(상수) 그대로 두고, 시운전에서만 바꾼다."""
         self.data_dir = data_dir
+        self.interval_sec = interval_sec
         self.client = client
         self.clock = clock
         self.redactor = redactor
@@ -137,6 +140,7 @@ class Collector:
         now = to_kst(self.clock.now())
         self.status.roll_to(now.date())
         self.status.set_in_window(is_in_window(now))
+        self.status.set_interval(self.interval_sec)
         outcomes: list[PollOutcome] = []
         for planned in plan_calls(self.target):
             if self.is_stopping:
@@ -171,7 +175,12 @@ class Collector:
             return PollOutcome(planned, collected_at, None, None, skipped_reason="exception")
 
         try:
-            record = build_record(collected_at=collected_at, result=result, mode=self.mode)
+            record = build_record(
+                collected_at=collected_at,
+                result=result,
+                mode=self.mode,
+                interval_sec=self.interval_sec,
+            )
         except Exception as exc:
             message = describe_exception(exc, self.redactor)
             logger.error(
@@ -261,7 +270,7 @@ class Collector:
         늦어진 주기는 몰아서 호출하지 않고 건너뛴다.
         exit_after_window 면 그날 창이 끝나거나 오늘 창이 없을 때 돌아온다.
         """
-        interval = timedelta(seconds=COLLECT_WINDOW.interval_sec)
+        interval = timedelta(seconds=self.interval_sec)
         last_tick: datetime | None = None
         was_in_window: bool | None = None
         cycles = 0
@@ -274,7 +283,7 @@ class Collector:
         while not self.is_stopping:
             now = to_kst(self.clock.now())
             # 창 밖 대기에서 05:00:00.003 처럼 경계를 살짝 넘겨 깨어나도 05:00 주기로 본다.
-            tick = next_tick(now, last_tick)
+            tick = next_tick(now, last_tick, self.interval_sec)
 
             if not is_in_window(tick):
                 if was_in_window:
@@ -330,12 +339,17 @@ class Collector:
 
         주기 정렬(next_tick)·한도·JSONL·상태 파일은 run 과 같은 경로를 쓴다.
         """
-        interval = timedelta(seconds=COLLECT_WINDOW.interval_sec)
+        interval = timedelta(seconds=self.interval_sec)
         until = to_kst(until)
         last_tick: datetime | None = None
-        logger.info("trial_started mode=%s until=%s", self.mode, until.isoformat())
+        logger.info(
+            "trial_started mode=%s until=%s interval_sec=%d",
+            self.mode,
+            until.isoformat(),
+            self.interval_sec,
+        )
         while not self.is_stopping:
-            tick = next_tick(to_kst(self.clock.now()), last_tick)
+            tick = next_tick(to_kst(self.clock.now()), last_tick, self.interval_sec)
             if tick >= until:
                 break
             self.sleep_until(tick)

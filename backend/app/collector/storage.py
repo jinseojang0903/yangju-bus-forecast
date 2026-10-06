@@ -33,7 +33,14 @@ def reference_dir(data_dir: Path, day: date) -> Path:
     return data_dir / REFERENCE_DIRNAME / day.isoformat()
 
 
-def build_record(*, collected_at: datetime, result: CallResult, mode: str) -> dict[str, Any]:
+def build_record(
+    *,
+    collected_at: datetime,
+    result: CallResult,
+    mode: str,
+    interval_sec: int | None,
+) -> dict[str, Any]:
+    """JSONL 한 줄. interval_sec 는 수집 주기(초)이며 주기 수집이 아니면(discover) None."""
     local = to_kst(collected_at)
     day = local.date()
     return {
@@ -49,6 +56,7 @@ def build_record(*, collected_at: datetime, result: CallResult, mode: str) -> di
         "is_weekday": is_weekday(day),
         "is_holiday": is_holiday(day),
         "mode": mode,
+        "interval_sec": interval_sec,
         "body": result.body,
     }
 

@@ -5,12 +5,14 @@ import pytest
 from app.collector.gbis import CallResult
 from app.collector.schedule import (
     ceil_to_interval,
+    floor_to_interval,
     is_holiday,
     is_in_window,
     is_today_window_over,
     is_weekday,
     next_tick,
     next_window_start,
+    validate_trial_interval,
 )
 from app.collector.storage import build_record
 from tests.collector.helpers import kst
@@ -67,7 +69,9 @@ def test_record_marks_holiday_and_weekday() -> None:
         error=None,
         body={"response": {}},
     )
-    record = build_record(collected_at=kst(2026, 10, 9, 6, 0), result=result, mode="run")
+    record = build_record(
+        collected_at=kst(2026, 10, 9, 6, 0), result=result, mode="run", interval_sec=60
+    )
     assert record["is_holiday"] is True and record["is_weekday"] is True
     assert record["collected_at"] == "2026-10-09T06:00:00.000+09:00"
     assert list(record) == [
@@ -83,8 +87,10 @@ def test_record_marks_holiday_and_weekday() -> None:
         "is_weekday",
         "is_holiday",
         "mode",
+        "interval_sec",
         "body",
     ]
+    assert record["interval_sec"] == 60
 
 
 def test_next_window_start() -> None:
@@ -117,3 +123,25 @@ def test_ceil_to_minute_boundary() -> None:
     assert ceil_to_interval(kst(2026, 10, 7, 5, 0, 0)) == kst(2026, 10, 7, 5, 0)
     assert ceil_to_interval(kst(2026, 10, 7, 5, 0, 1)) == kst(2026, 10, 7, 5, 1)
     assert ceil_to_interval(kst(2026, 10, 7, 4, 59, 30)) == kst(2026, 10, 7, 5, 0)
+
+
+def test_40_second_boundaries_are_multiples_from_kst_midnight() -> None:
+    assert ceil_to_interval(kst(2026, 10, 6, 10, 20, 1), 40) == kst(2026, 10, 6, 10, 20, 40)
+    assert ceil_to_interval(kst(2026, 10, 6, 10, 20, 41), 40) == kst(2026, 10, 6, 10, 21, 20)
+    assert floor_to_interval(kst(2026, 10, 6, 10, 21, 19), 40) == kst(2026, 10, 6, 10, 20, 40)
+    # 자정 직전 → 다음 날 00:00:00 (86400 = 40 × 2160)
+    assert ceil_to_interval(kst(2026, 10, 6, 23, 59, 21), 40) == kst(2026, 10, 7, 0, 0)
+    late = kst(2026, 10, 6, 10, 20, 40) + timedelta(milliseconds=3)
+    assert next_tick(late, kst(2026, 10, 6, 10, 20), 40) == kst(2026, 10, 6, 10, 20, 40)
+    assert next_tick(late, kst(2026, 10, 6, 10, 20, 40), 40) == kst(2026, 10, 6, 10, 21, 20)
+
+
+@pytest.mark.parametrize("value", [20, 30, 40, 45, 48, 60])
+def test_trial_interval_accepts_divisors_in_range(value: int) -> None:
+    validate_trial_interval(value)
+
+
+@pytest.mark.parametrize("value", [19, 35, 61, 0, -40, 120])
+def test_trial_interval_rejects_out_of_range_or_non_divisor(value: int) -> None:
+    with pytest.raises(ValueError):
+        validate_trial_interval(value)
