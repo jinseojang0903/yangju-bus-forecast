@@ -88,7 +88,7 @@ uv run ruff format .    # 포맷
 1. `main`에 직접 올리지 않고, 작업마다 브랜치를 만듭니다. 예: `feat/api-contract`, `fix/collector-timeout`, `docs/readme`
 2. Pull Request를 열고, 무엇을 왜 바꿨는지와 확인한 방법(테스트 결과, 시운전 등)을 적습니다.
 3. 다른 팀원이 내용을 확인하고 승인(Approve)하면 머지합니다.
-4. 커밋 메시지는 "무엇을"보다 "왜"를 적습니다. 하나의 커밋은 하나의 의도만 담습니다.
+4. 커밋 메시지와 PR 제목은 `유형(범위): 내용` 형식으로 씁니다. 유형은 `feat`·`fix`·`docs`·`refactor`·`test`·`chore`, 범위는 `collector`·`labeling`·`api`·`db`·`web`·`deploy`(선택)입니다. 예: `feat(api): 스냅샷 API 뼈대`. 본문에는 "무엇을"보다 "왜"를 2~3줄로 적고, 하나의 커밋은 하나의 의도만 담습니다. Squash and merge 할 때 제목 끝에 `(#PR번호)` 를 붙입니다.
 5. 서비스 키, DB 접속 정보, 수집 데이터는 어떤 경우에도 커밋하지 않습니다.
 
 **예외:** 수집기가 멈춰 데이터를 잃고 있는 긴급 상황에는 먼저 고쳐 반영하고, 사후에 PR로 기록을 남깁니다.
