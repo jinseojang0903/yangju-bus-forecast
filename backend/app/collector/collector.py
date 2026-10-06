@@ -41,6 +41,8 @@ logger = logging.getLogger(__name__)
 
 MODE_RUN = "run"
 MODE_ONCE = "once"
+# 시운전. 평가·사례에서 이 mode 의 기록은 뺀다.
+MODE_TRIAL = "trial"
 # 수집 창 안에서 이만큼의 주기마다 INFO 로 누적 호출 수를 남긴다(약 30분).
 HEARTBEAT_EVERY_CYCLES = 30
 
@@ -322,6 +324,39 @@ class Collector:
             if cycles % HEARTBEAT_EVERY_CYCLES == 0:
                 self._log_summary("heartbeat")
         self._log_summary("collector_stopped")
+
+    def run_trial(self, until: datetime) -> None:
+        """시운전: 수집 창·요일을 무시하고 until 미만의 분 경계마다 호출한 뒤 돌아온다.
+
+        주기 정렬(next_tick)·한도·JSONL·상태 파일은 run 과 같은 경로를 쓴다.
+        """
+        interval = timedelta(seconds=COLLECT_WINDOW.interval_sec)
+        until = to_kst(until)
+        last_tick: datetime | None = None
+        logger.info("trial_started mode=%s until=%s", self.mode, until.isoformat())
+        while not self.is_stopping:
+            tick = next_tick(to_kst(self.clock.now()), last_tick)
+            if tick >= until:
+                break
+            self.sleep_until(tick)
+            if self.is_stopping:
+                break
+            if last_tick is not None and tick - last_tick > interval:
+                logger.warning(
+                    "cycles_skipped count=%d from=%s reason=late_cycle",
+                    int((tick - last_tick) / interval) - 1,
+                    (last_tick + interval).isoformat(),
+                )
+            try:
+                self.poll_cycle()
+            except Exception as exc:
+                logger.error(
+                    "cycle_crashed tick=%s error=%s",
+                    tick.isoformat(),
+                    describe_exception(exc, self.redactor),
+                )
+            last_tick = tick
+        self._log_summary("trial_finished")
 
     def _log_summary(self, event: str) -> None:
         apis = " ".join(

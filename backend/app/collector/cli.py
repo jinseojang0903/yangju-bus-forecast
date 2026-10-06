@@ -5,6 +5,7 @@
     once          지금 대상 전체를 1회 수집해 JSONL 에 저장하고 요약 출력
     run           평일 05:00~10:00(KST) 분 경계마다 수집
                   --exit-after-window: 그날 창이 끝나면 종료
+                  --trial-until HH:MM: 시운전(창 무시, 그 시각 전까지, mode=trial)
     status        오늘 상태를 한 줄 JSON 으로 출력
     save-fixture  실제 응답(위치·도착) 1건씩을 tests/fixtures/gbis/ 에 저장
                   (서비스 키 제거)
@@ -17,14 +18,17 @@ import argparse
 import io
 import json
 import logging
+import re
 import signal
 import sys
 from collections.abc import Sequence
+from datetime import datetime, time
 from types import FrameType
 
 from app.collector.collector import (
     MODE_ONCE,
     MODE_RUN,
+    MODE_TRIAL,
     Collector,
     missing_target_ids,
     plan_calls,
@@ -36,7 +40,7 @@ from app.collector.gbis import GbisClient
 from app.collector.lock import AlreadyRunningError, collector_lock, is_collector_running
 from app.collector.logging_setup import quiet_http_loggers, setup_logging
 from app.collector.redact import Redactor, describe_exception
-from app.collector.schedule import SystemClock
+from app.collector.schedule import Clock, SystemClock, to_kst
 from app.collector.status import StatusStore, build_status_report, status_path
 from app.collector.summary import summarize
 from app.core.settings import (
@@ -46,6 +50,7 @@ from app.core.settings import (
     GBIS_BUS_ARRIVAL,
     GBIS_BUS_LOCATION,
     GBIS_FIXTURE_DIR,
+    KST,
     Settings,
     get_settings,
 )
@@ -54,8 +59,10 @@ logger = logging.getLogger("app.collector")
 
 EXIT_OK = 0
 EXIT_CALL_FAILED = 1
-EXIT_CONFIG_MISSING = 2
+EXIT_CONFIG_MISSING = 2  # 설정 누락·잘못된 옵션 값도 여기에 넣는다
 EXIT_ALREADY_RUNNING = 3
+
+_TRIAL_UNTIL_PATTERN = re.compile(r"([01]\d|2[0-3]):([0-5]\d)")
 
 
 def _configure_stdout() -> None:
@@ -153,7 +160,44 @@ def cmd_once(settings: Settings, redactor: Redactor) -> int:
     return EXIT_CALL_FAILED if has_failure else EXIT_OK
 
 
-def cmd_run(settings: Settings, redactor: Redactor, *, exit_after_window: bool) -> int:
+def resolve_trial_until(text: str, now: datetime) -> datetime:
+    """'HH:MM'(KST, 오늘)을 시각으로 바꾼다. 형식이 틀리거나 이미 지났으면 ValueError."""
+    match = _TRIAL_UNTIL_PATTERN.fullmatch(text.strip())
+    if match is None:
+        raise ValueError("형식은 HH:MM(00:00–23:59)이어야 한다")
+    local = to_kst(now)
+    until = datetime.combine(
+        local.date(), time(int(match.group(1)), int(match.group(2))), tzinfo=KST
+    )
+    if until <= local:
+        raise ValueError("이미 지난 시각이다")
+    return until
+
+
+def cmd_run(
+    settings: Settings,
+    redactor: Redactor,
+    *,
+    exit_after_window: bool,
+    trial_until: str | None = None,
+    clock: Clock | None = None,
+) -> int:
+    """정식 수집(run) 또는 시운전(--trial-until).
+
+    시운전은 수집 창을 무시하고 오늘 trial_until 미만의 분 경계마다 같은 대상을 호출한다.
+    기록의 mode 는 "trial" 이며 평가·사례에서 뺀다.
+    한도·잠금·키 가림·JSONL 먼저 쓰기는 정식 수집과 같은 경로를 쓴다.
+    잘못된 시각(형식 오류·이미 지남)이면 호출 없이 2 를 돌려준다.
+    """
+    clock = clock or SystemClock()
+    until: datetime | None = None
+    if trial_until is not None:
+        try:
+            until = resolve_trial_until(trial_until, clock.now())
+        except ValueError as exc:
+            logger.error("trial_until_invalid value=%s reason=%s", trial_until, exc)
+            print(f"--trial-until {trial_until!r}: {exc}")
+            return EXIT_CONFIG_MISSING
     if _report_missing_ids():
         return EXIT_CONFIG_MISSING
     if not _require_service_key(settings):
@@ -166,9 +210,9 @@ def cmd_run(settings: Settings, redactor: Redactor, *, exit_after_window: bool) 
             collector = Collector(
                 data_dir=data_dir,
                 client=client,
-                clock=SystemClock(),
+                clock=clock,
                 redactor=redactor,
-                mode=MODE_RUN,
+                mode=MODE_RUN if until is None else MODE_TRIAL,
                 db_sink=db_sink,
             )
 
@@ -179,7 +223,10 @@ def cmd_run(settings: Settings, redactor: Redactor, *, exit_after_window: bool) 
             signal.signal(signal.SIGTERM, _stop)
             if hasattr(signal, "SIGBREAK"):  # 윈도우 콘솔 Ctrl+Break
                 signal.signal(signal.SIGBREAK, _stop)
-            collector.run(exit_after_window=exit_after_window)
+            if until is None:
+                collector.run(exit_after_window=exit_after_window)
+            else:
+                collector.run_trial(until)
         finally:
             client.close()
             if db_sink is not None:
@@ -264,7 +311,15 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("discover", help="노선·정류장 ID 찾기와 기준정보 저장(노선 API 하루 4회)")
     sub.add_parser("once", help="대상 전체 1회 수집")
     run = sub.add_parser("run", help="수집 창 안에서 1분마다 수집")
-    run.add_argument("--exit-after-window", action="store_true", help="그날 수집 창이 끝나면 종료")
+    run_mode = run.add_mutually_exclusive_group()
+    run_mode.add_argument(
+        "--exit-after-window", action="store_true", help="그날 수집 창이 끝나면 종료"
+    )
+    run_mode.add_argument(
+        "--trial-until",
+        metavar="HH:MM",
+        help="시운전: 창 무시, 오늘 이 시각(KST) 전까지 1분마다(mode=trial)",
+    )
     sub.add_parser("status", help="오늘 상태를 한 줄 JSON 으로 출력")
     sub.add_parser("save-fixture", help="실제 응답을 테스트 픽스처로 저장")
     return parser
@@ -288,7 +343,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "once":
             return cmd_once(settings, redactor)
         if args.command == "run":
-            return cmd_run(settings, redactor, exit_after_window=args.exit_after_window)
+            return cmd_run(
+                settings,
+                redactor,
+                exit_after_window=args.exit_after_window,
+                trial_until=args.trial_until,
+            )
         if args.command == "save-fixture":
             return cmd_save_fixture(settings, redactor)
     except AlreadyRunningError as exc:
