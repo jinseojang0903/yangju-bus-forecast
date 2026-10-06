@@ -77,7 +77,7 @@ type StationId = string;   // GBIS 정류소 ID, ASCII 숫자 1–20자리. 예:
 type RouteId = string;     // GBIS 노선 ID, ASCII 숫자 1–20자리. 예: "235000092"(G1300)
 type VehicleId = string;   // GBIS vehId, ASCII 숫자
 type DestinationId = string; // 자체 코드, ^[a-z_]{1,32}$. 예: "jamsil"
-type SnapshotId = string;  // uuid. DB forecast_snapshot.snapshot_group_id 와 같다. 클라이언트는 해석하지 않는다
+type SnapshotId = string;  // uuid. DB forecast_group.forecast_group_id 와 같다. 클라이언트는 해석하지 않는다
 // ID 형식이 틀리면 400 VALIDATION_FAILED, 형식은 맞지만 없으면 404 NOT_FOUND
 
 type LeadTimeMin = 5 | 10 | 15;                 // 선행시간(분). 고정 규칙
@@ -98,6 +98,8 @@ type RiskLevel = "high" | "medium" | "low";     // high: p ≥ 0.7, low: p < 0.3
 | 예보 대상 시간대 | 내 정류장 도착 06:00~08:59 | 수집 시간 안이지만 지금 예보할 버스가 없으면 `service.state = "outside_forecast_hours"`. 버스별로는 `inForecastHours` |
 | 둘 다 안 | | `service.state = "in_service"` |
 
+- 서비스 상태는 버스 목록이 아니라 시계로 판정한다: 수집 시간 안이고 05:45 이상 09:00 미만이면 `in_service`(06:00 도착 버스의 15분 예보부터 08:59 도착 버스까지).
+- 수집 시간 밖(`outside_collection`)에서는 새 데이터가 없는 것이 정상이므로 `stale` 은 항상 `false` 다.
 - 화면은 `outside_*` 일 때 오류나 '정보 오래됨'이 아니라 **"지금은 예보 시간이 아니에요"** 와 `service.nextForecastStartAt`(다음 예보 시작 시각)을 보여 준다.
 - `nextForecastStartAt` = 다음 평일 05:45(06:00 도착 버스의 15분 예보가 나오는 시각). 설정의 공휴일 목록(초기값 `2026-10-09`)에 있는 날은 건너뛴다. 시각과 공휴일 목록은 설정 모듈에 있다(사용자 결정 2026-10-06).
 - **과거 시점 재생 기능은 만들지 않는다.** 본선 시연은 평일 아침 실제 화면을 녹화한 영상으로 한다. 예보 스냅샷은 계획대로 모두 저장한다(F07).
@@ -117,6 +119,8 @@ type RiskLevel = "high" | "medium" | "low";     // high: p ≥ 0.7, low: p < 0.3
 | `GET /api/v1/reports/no-seat` | 30분대별 무좌석 도착 현황(F10) | 리포트 | **추후 추가** |
 | `GET /api/v1/reports/validation` | 선행시간별 검증 지표(F10) | 리포트 | **추후 추가** |
 
+`/health/detail` 은 OpenAPI(`/docs`)에 싣지 않고 토큰이 없으면 404 로 답하지만, 다른 메서드의 405 와 호출 제한의 429 로 경로가 있다는 것은 드러날 수 있다(은닉은 부분적이다).
+
 ## 4. 엔드포인트
 
 ### 4.1 GET /api/v1/health
@@ -134,7 +138,7 @@ type RiskLevel = "high" | "medium" | "low";     // high: p ≥ 0.7, low: p < 0.3
 ```
 
 ### 4.2 GET /api/v1/health/detail
-팀 운영용 상세 응답. 요청 헤더 `X-Health-Token` 이 `.env` 의 `HEALTH_DETAIL_TOKEN` 과 같아야 한다(사용자 결정 2026-10-06). 헤더가 없거나 틀리면, 또는 서버에 토큰이 설정되지 않았으면 경로의 존재를 드러내지 않도록 `404 NOT_FOUND` 로 답한다. 토큰 비교는 상수 시간 비교를 쓴다.
+팀 운영용 상세 응답. 요청 헤더 `X-Health-Token` 이 `.env` 의 `HEALTH_DETAIL_TOKEN` 과 같아야 한다(사용자 결정 2026-10-06). 헤더가 없거나 틀리면, 또는 서버에 토큰이 설정되지 않았으면 경로의 존재를 드러내지 않도록 `404 NOT_FOUND` 로 답한다. 토큰 비교는 상수 시간 비교를 쓴다. 서버 토큰이 32자 미만이면 설정되지 않은 것으로 본다.
 
 ```ts
 {
@@ -242,6 +246,7 @@ interface Forecast {
   status: ForecastStatus;             // 5장
   issuedAt: Timestamp | null;         // 예보를 낸 시각(버스가 도착 L분 전이 된 시점). not_yet 이면 null
   noSeatProbability: number | null;   // 도착 시 0석 확률 = k/n (0–1, 보정 없음). status 가 ok 일 때만
+  // 값은 round(k/n, 4)(DB numeric(5,4) 와 같음). riskLevel 은 반올림 전 k/n 으로 정한다
   n: number | null;                   // 사용한 사례 수
   k: number | null;                   // 그중 도착 시 0석이었던 사례 수 → 화면 "n회 중 k회"
   riskLevel: RiskLevel | null;        // noSeatProbability 가 있을 때만
@@ -298,7 +303,7 @@ interface Alternatives {
 ### 4.6 POST /api/v1/parse-query
 자연어 질문을 조회 조건으로 바꾼다(F08). 결과는 조건만 돌려주고, 실제 조회는 클라이언트가 `/snapshot` 으로 한다. **뼈대 단계에서는 항상 `status: "unavailable"`, `fallbackReason: "llm_disabled"`** 이다.
 
-요청 (Body): `{ text: string }`. 1–200자. 원문은 저장하지 않는다(HMAC 만 로그).
+요청 (Body): `{ text: string }`. 1–200자. 원문은 저장하지 않는다(HMAC 만 로그). 요청 본문이 4096바이트를 넘으면 본문을 읽기 전에 400 이다.
 
 응답 `200`
 ```ts
@@ -399,7 +404,7 @@ interface Alternatives {
       "selectedLeadTimeMin": 10,
       "forecasts": [
         { "leadTimeMin": 15, "status": "ok", "issuedAt": "2026-10-07T07:23:40+09:00",
-          "noSeatProbability": 0.62, "n": 26, "k": 16, "riskLevel": "medium", "preliminary": true,
+          "noSeatProbability": 0.6154, "n": 26, "k": 16, "riskLevel": "medium", "preliminary": true,
           "inputs": { "seats": 7, "headwayMin": 11 } },
         { "leadTimeMin": 10, "status": "ok", "issuedAt": "2026-10-07T07:28:40+09:00",
           "noSeatProbability": 0.75, "n": 24, "k": 18, "riskLevel": "high", "preliminary": true,
@@ -470,9 +475,13 @@ interface Alternatives {
 
 허용 목록 밖의 값은 400 이다. 화면은 개발 중 같은 `scenario` 를 넘겨 각 상태를 그리고 캡처한다.
 
+- 가짜 응답은 요청의 `deadline` 을 형식만 검증하고 무시한다. 마감은 scenario 마다 고정이다(대안 상태를 항상 같은 모양으로 재현하려고).
+- 가짜 응답의 시각은 고정값이라 `nextRefreshAt` 이 이미 지난 시각일 수 있다. 클라이언트는 자동 재조회 간격을 최소 10초로 지킨다.
+
 ## 11. 변경 이력
 | 날짜 | 변경 | 영향 |
 |---|---|---|
 | 2026-10-06 | 새 범위로 처음 작성(회의용 초안) | FE/BE |
 | 2026-10-06 | v2: 선행시간(`not_yet`, `issuedAt`, `selectedLeadTimeMin`), 서비스 시간(`service`), 대안 결정 규칙·`switchSuggested`, 공지·리포트 추후 추가, 호출 제한·CORS, 캐시 10초·`nextRefreshAt`, 설명 대기·`fallbackReason`, `arrivalEstimateSource`, `rulesVersion`, `probability` → `noSeatProbability`, `/health` 공개·상세 분리, 화면 요구(영상 녹화), 예시 응답 | FE/BE |
 | 2026-10-06 | v2 결정 반영: `outside_hours` 승인, 분 단위 대체 임시 승인·스냅샷 저장, `/health/detail` 토큰 헤더(`X-Health-Token`, 없거나 틀리면 404), 다음 예보 시작 05:45·공휴일 목록, 미정 2건 추가, 12장 개발용 `scenario` | FE/BE |
+| 2026-10-06 | 구현 반영: `noSeatProbability` = round(k/n, 4)(9장 예시 0.62 → 0.6154), SnapshotId = `forecast_group.forecast_group_id`, 서비스 상태는 시계로 판정·수집 시간 밖 `stale=false`, 가짜 응답의 deadline 무시·재조회 최소 10초, `/health/detail` 문서 제외·토큰 32자 이상·은닉은 부분적, POST 본문 4096바이트 상한 | FE/BE |

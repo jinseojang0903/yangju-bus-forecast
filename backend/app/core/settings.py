@@ -7,7 +7,7 @@
 
 import math
 from dataclasses import dataclass
-from datetime import time
+from datetime import date, time
 from functools import lru_cache
 from pathlib import Path
 from typing import Final
@@ -458,6 +458,85 @@ LLM_LIMITS: Final = LlmLimits()
 
 
 # ---------------------------------------------------------------------------
+# 예보 API (docs/api-contract.md v2). 계약에 적힌 값은 이 설정의 초기값이다.
+# 회의(10/7)에서 바뀌면 여기만 고친다.
+# ---------------------------------------------------------------------------
+API_PREFIX: Final = "/api/v1"
+# 응답의 rulesVersion("YYYY-MM-DD.n").
+# 선행시간 선택·사례 검색·대안 규칙이 바뀌면 올린다.
+RULES_VERSION: Final = "2026-10-06.1"
+# case_feature.rule_version: 사례 특징(기준 시각·잔여석·간격) 계산 규칙 버전.
+# RULES_VERSION 과 따로 둬, 선행시간 선택만 바뀌면 특징을 다시 계산하지 않는다.
+CASE_FEATURE_RULE_VERSION: Final = "case-feature-v1"
+# 화면에 쓸 선행시간 선택 규칙(계약 2.1절).
+# latest_issued: 이미 시점이 지난(issuedAt 이 있는) 예보 중 가장 최근 것.
+LEAD_TIME_SELECTION_RULE: Final = "latest_issued"
+
+
+@dataclass(frozen=True)
+class ServiceHours:
+    """예보 서비스 시간(계약 2.2절). 수집 시간 자체는 COLLECT_WINDOW 를 쓴다."""
+
+    # 예보 대상: 내 정류장 도착 start 이상 end 미만(06:00~08:59).
+    forecast_arrival_start: time = time(6, 0)
+    forecast_arrival_end: time = time(9, 0)
+    # 다음 예보 시작 시각. 06:00 도착 버스의 15분 예보 시각.
+    # 사용자 결정(2026-10-06).
+    forecast_start: time = time(5, 45)
+    # 예보하지 않는 공휴일(사용자 결정 2026-10-06).
+    # 이날은 service.state = outside_collection 이다.
+    # 수집기의 is_holiday(공휴일 라이브러리)와는 별개 목록이다.
+    holidays: tuple[date, ...] = (date(2026, 10, 9),)
+
+
+SERVICE_HOURS: Final = ServiceHours()
+# API noSeatProbability = round(k/n, 이 자릿수). DB numeric(5,4) 와 같은 값.
+# 위험 등급은 반올림 전 k/n 으로 정한다.
+NO_SEAT_PROBABILITY_DECIMALS: Final = 4
+SERVICE_OUTSIDE_MESSAGE: Final = "지금은 예보 시간이 아니에요"
+# 수집 데이터가 이보다 오래되면 stale(계약 1.3·10장, 초기 60초).
+STALE_AFTER_SEC: Final = 60
+# 스냅샷 캐시(계약 1.3절): (정류장, 목적지, 마감) 조합별 10초.
+SNAPSHOT_CACHE_TTL_SEC: Final = 10
+SNAPSHOT_CACHE_MAX_ENTRIES: Final = 1024
+# nextRefreshAt = 가장 짧은 대상 주기의 다음 경계 + 이 여유(초).
+NEXT_REFRESH_MARGIN_SEC: Final = 3
+# /health: 수집 시간 안에서 대상의 마지막 성공이 주기 × 이 배수보다 오래됐거나
+# 연속 실패가 아래 수 이상이면 degraded(계약 4.1절).
+HEALTH_STALE_INTERVAL_MULTIPLIER: Final = 3
+HEALTH_DEGRADED_CONSECUTIVE_FAILURES: Final = 3
+# HEALTH_DETAIL_TOKEN 이 이보다 짧으면 설정되지 않은 것으로 보고 상세는 항상 404.
+HEALTH_DETAIL_TOKEN_MIN_LENGTH: Final = 32
+# POST 본문 상한(바이트). 넘으면 본문을 읽기 전에 400.
+MAX_REQUEST_BODY_BYTES: Final = 4096
+
+
+@dataclass(frozen=True)
+class RateLimitRule:
+    limit: int  # window_sec 안에 허용하는 호출 수
+    window_sec: int
+
+
+@dataclass(frozen=True)
+class ApiRateLimits:
+    """IP 별 호출 횟수 제한(계약 1.1절). 하루 제한은 최근 24시간(이동 창)으로 센다."""
+
+    snapshot: tuple[RateLimitRule, ...] = (RateLimitRule(limit=30, window_sec=60),)
+    explanation: tuple[RateLimitRule, ...] = (RateLimitRule(limit=20, window_sec=60),)
+    parse_query: tuple[RateLimitRule, ...] = (
+        RateLimitRule(limit=5, window_sec=60),
+        RateLimitRule(limit=50, window_sec=86_400),
+    )
+    # 위 셋을 뺀 나머지 GET 전체가 IP 당 이 한도를 함께 쓴다.
+    default_get: tuple[RateLimitRule, ...] = (RateLimitRule(limit=60, window_sec=60),)
+    # 메모리 보호: 추적하는 (경로 묶음, IP) 키가 이보다 많아지면 만료된 키를 지운다.
+    max_tracked_keys: int = 100_000
+
+
+API_RATE_LIMITS: Final = ApiRateLimits()
+
+
+# ---------------------------------------------------------------------------
 # 환경변수
 # ---------------------------------------------------------------------------
 class Settings(BaseSettings):
@@ -473,6 +552,17 @@ class Settings(BaseSettings):
     database_url: SecretStr = SecretStr("")
     llm_api_key: SecretStr = SecretStr("")
     collect_data_dir: str = ""
+
+    # 예보 API. /health/detail 의 X-Health-Token 과 비교한다. 비어 있으면 상세는 항상 404.
+    health_detail_token: SecretStr = SecretStr("")
+    # true 면 가짜 저장소를 쓰고 /snapshot 의 scenario 쿼리를 받는다(계약 12장).
+    fake_data: bool = True
+    # CORS 허용 출처(쉼표 구분). 비어 있으면 어떤 출처도 허용하지 않는다(계약 1.2절).
+    cors_allow_origins: str = ""
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]
 
     @property
     def service_key(self) -> str:
@@ -506,6 +596,7 @@ class Settings(BaseSettings):
             self.service_key,
             self.database_url.get_secret_value().strip(),
             self.llm_api_key.get_secret_value().strip(),
+            self.health_detail_token.get_secret_value().strip(),
         ]
         return [v for v in values if v]
 

@@ -1,0 +1,1487 @@
+{
+  "components": {
+    "schemas": {
+      "AlternativeCandidate": {
+        "properties": {
+          "destinationArrivalAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destinationarrivalat"
+          },
+          "leadTimeMin": {
+            "anyOf": [
+              {
+                "enum": [
+                  5,
+                  10,
+                  15
+                ],
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leadtimemin"
+          },
+          "meetsDeadline": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meetsdeadline"
+          },
+          "noSeatProbability": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Noseatprobability"
+          },
+          "riskLevel": {
+            "anyOf": [
+              {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risklevel"
+          },
+          "routeId": {
+            "title": "Routeid",
+            "type": "string"
+          },
+          "routeName": {
+            "title": "Routename",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "arrival_1st",
+              "arrival_2nd",
+              "timetable_next"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "stationArrivalAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stationarrivalat"
+          },
+          "vehicleId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vehicleid"
+          }
+        },
+        "required": [
+          "routeId",
+          "routeName",
+          "vehicleId",
+          "source",
+          "stationArrivalAt",
+          "destinationArrivalAt",
+          "meetsDeadline",
+          "leadTimeMin",
+          "noSeatProbability",
+          "riskLevel"
+        ],
+        "title": "AlternativeCandidate",
+        "type": "object"
+      },
+      "Alternatives": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/AlternativeCandidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "recommended": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Recommended"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "recommended",
+              "no_alternative",
+              "arrival_unavailable",
+              "undecidable"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "switchSuggested": {
+            "title": "Switchsuggested",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "status",
+          "recommended",
+          "switchSuggested",
+          "candidates"
+        ],
+        "title": "Alternatives",
+        "type": "object"
+      },
+      "Bus": {
+        "properties": {
+          "arrivalEstimateSource": {
+            "anyOf": [
+              {
+                "enum": [
+                  "predict_time_sec",
+                  "predict_time_min",
+                  "timetable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arrivalestimatesource"
+          },
+          "currentSeats": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentseats"
+          },
+          "forecasts": {
+            "items": {
+              "$ref": "#/components/schemas/Forecast"
+            },
+            "title": "Forecasts",
+            "type": "array"
+          },
+          "inForecastHours": {
+            "title": "Inforecasthours",
+            "type": "boolean"
+          },
+          "minutesToArrival": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minutestoarrival"
+          },
+          "plateNo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plateno"
+          },
+          "routeId": {
+            "title": "Routeid",
+            "type": "string"
+          },
+          "routeName": {
+            "title": "Routename",
+            "type": "string"
+          },
+          "seatsUpdatedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seatsupdatedat"
+          },
+          "selectedLeadTimeMin": {
+            "anyOf": [
+              {
+                "enum": [
+                  5,
+                  10,
+                  15
+                ],
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selectedleadtimemin"
+          },
+          "source": {
+            "enum": [
+              "arrival_1st",
+              "arrival_2nd",
+              "timetable_next"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "stationArrivalAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stationarrivalat"
+          },
+          "vehicleId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vehicleid"
+          }
+        },
+        "required": [
+          "routeId",
+          "routeName",
+          "vehicleId",
+          "plateNo",
+          "source",
+          "stationArrivalAt",
+          "arrivalEstimateSource",
+          "minutesToArrival",
+          "inForecastHours",
+          "currentSeats",
+          "seatsUpdatedAt",
+          "selectedLeadTimeMin",
+          "forecasts"
+        ],
+        "title": "Bus",
+        "type": "object"
+      },
+      "DestinationItem": {
+        "properties": {
+          "destinationId": {
+            "title": "Destinationid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "routes": {
+            "items": {
+              "$ref": "#/components/schemas/RouteItem"
+            },
+            "title": "Routes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "destinationId",
+          "name",
+          "routes"
+        ],
+        "title": "DestinationItem",
+        "type": "object"
+      },
+      "ErrorDetail": {
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "reason"
+        ],
+        "title": "ErrorDetail",
+        "type": "object"
+      },
+      "ErrorInfo": {
+        "properties": {
+          "code": {
+            "enum": [
+              "VALIDATION_FAILED",
+              "NOT_FOUND",
+              "METHOD_NOT_ALLOWED",
+              "RATE_LIMITED",
+              "INTERNAL_ERROR"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "details": {
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "title": "Details",
+            "type": "array"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "details"
+        ],
+        "title": "ErrorInfo",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorInfo"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "ErrorResponse",
+        "type": "object"
+      },
+      "ExplanationResponse": {
+        "properties": {
+          "computedAt": {
+            "format": "date-time",
+            "title": "Computedat",
+            "type": "string"
+          },
+          "fallbackReason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "llm_disabled",
+                  "timeout",
+                  "check_failed",
+                  "daily_limit",
+                  "error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallbackreason"
+          },
+          "snapshotId": {
+            "format": "uuid",
+            "title": "Snapshotid",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "llm",
+              "fallback"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshotId",
+          "computedAt",
+          "source",
+          "fallbackReason",
+          "text"
+        ],
+        "title": "ExplanationResponse",
+        "type": "object"
+      },
+      "Forecast": {
+        "properties": {
+          "inputs": {
+            "$ref": "#/components/schemas/ForecastInputs"
+          },
+          "issuedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuedat"
+          },
+          "k": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "K"
+          },
+          "leadTimeMin": {
+            "enum": [
+              5,
+              10,
+              15
+            ],
+            "title": "Leadtimemin",
+            "type": "integer"
+          },
+          "n": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N"
+          },
+          "noSeatProbability": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Noseatprobability"
+          },
+          "preliminary": {
+            "title": "Preliminary",
+            "type": "boolean"
+          },
+          "riskLevel": {
+            "anyOf": [
+              {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risklevel"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "not_yet",
+              "insufficient_cases",
+              "not_validated",
+              "stale",
+              "missing_input",
+              "outside_hours"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "leadTimeMin",
+          "status",
+          "issuedAt",
+          "noSeatProbability",
+          "n",
+          "k",
+          "riskLevel",
+          "preliminary",
+          "inputs"
+        ],
+        "title": "Forecast",
+        "type": "object"
+      },
+      "ForecastInputs": {
+        "properties": {
+          "headwayMin": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headwaymin"
+          },
+          "seats": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seats"
+          }
+        },
+        "required": [
+          "seats",
+          "headwayMin"
+        ],
+        "title": "ForecastInputs",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "properties": {
+          "lastSuccessAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastsuccessat"
+          },
+          "now": {
+            "format": "date-time",
+            "title": "Now",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "degraded",
+              "idle"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "now",
+          "lastSuccessAt"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "ParseQueryRequest": {
+        "properties": {
+          "text": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "ParseQueryRequest",
+        "type": "object"
+      },
+      "ParseQueryResponse": {
+        "properties": {
+          "fallbackReason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "llm_disabled",
+                  "timeout",
+                  "check_failed",
+                  "daily_limit",
+                  "error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallbackreason"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "query": {
+            "$ref": "#/components/schemas/ParsedQuery"
+          },
+          "status": {
+            "enum": [
+              "parsed",
+              "need_more",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "fallbackReason",
+          "query",
+          "message"
+        ],
+        "title": "ParseQueryResponse",
+        "type": "object"
+      },
+      "ParsedQuery": {
+        "properties": {
+          "deadline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "destination": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination"
+          },
+          "station": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Station"
+          }
+        },
+        "required": [
+          "station",
+          "destination",
+          "deadline"
+        ],
+        "title": "ParsedQuery",
+        "type": "object"
+      },
+      "Recommended": {
+        "properties": {
+          "reasonCode": {
+            "enum": [
+              "lowest_risk",
+              "earliest_among_equal_risk"
+            ],
+            "title": "Reasoncode",
+            "type": "string"
+          },
+          "routeId": {
+            "title": "Routeid",
+            "type": "string"
+          },
+          "vehicleId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vehicleid"
+          }
+        },
+        "required": [
+          "routeId",
+          "vehicleId",
+          "reasonCode"
+        ],
+        "title": "Recommended",
+        "type": "object"
+      },
+      "RouteItem": {
+        "properties": {
+          "alightStationId": {
+            "title": "Alightstationid",
+            "type": "string"
+          },
+          "alightStationName": {
+            "title": "Alightstationname",
+            "type": "string"
+          },
+          "routeId": {
+            "title": "Routeid",
+            "type": "string"
+          },
+          "routeName": {
+            "title": "Routename",
+            "type": "string"
+          }
+        },
+        "required": [
+          "routeId",
+          "routeName",
+          "alightStationId",
+          "alightStationName"
+        ],
+        "title": "RouteItem",
+        "type": "object"
+      },
+      "ServiceInfo": {
+        "properties": {
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "nextForecastStartAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextforecaststartat"
+          },
+          "state": {
+            "enum": [
+              "in_service",
+              "outside_collection",
+              "outside_forecast_hours"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "message",
+          "nextForecastStartAt"
+        ],
+        "title": "ServiceInfo",
+        "type": "object"
+      },
+      "SnapshotDestination": {
+        "properties": {
+          "destinationId": {
+            "title": "Destinationid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "destinationId",
+          "name"
+        ],
+        "title": "SnapshotDestination",
+        "type": "object"
+      },
+      "SnapshotResponse": {
+        "properties": {
+          "alternatives": {
+            "$ref": "#/components/schemas/Alternatives"
+          },
+          "buses": {
+            "items": {
+              "$ref": "#/components/schemas/Bus"
+            },
+            "title": "Buses",
+            "type": "array"
+          },
+          "computedAt": {
+            "format": "date-time",
+            "title": "Computedat",
+            "type": "string"
+          },
+          "dataUpdatedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataupdatedat"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/SnapshotDestination"
+          },
+          "nextRefreshAt": {
+            "format": "date-time",
+            "title": "Nextrefreshat",
+            "type": "string"
+          },
+          "rulesVersion": {
+            "title": "Rulesversion",
+            "type": "string"
+          },
+          "service": {
+            "$ref": "#/components/schemas/ServiceInfo"
+          },
+          "snapshotId": {
+            "format": "uuid",
+            "title": "Snapshotid",
+            "type": "string"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "station": {
+            "$ref": "#/components/schemas/SnapshotStation"
+          },
+          "walkMinutesAllowed": {
+            "title": "Walkminutesallowed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "snapshotId",
+          "computedAt",
+          "nextRefreshAt",
+          "rulesVersion",
+          "dataUpdatedAt",
+          "stale",
+          "service",
+          "station",
+          "destination",
+          "deadline",
+          "walkMinutesAllowed",
+          "buses",
+          "alternatives"
+        ],
+        "title": "SnapshotResponse",
+        "type": "object"
+      },
+      "SnapshotStation": {
+        "properties": {
+          "directionLabel": {
+            "title": "Directionlabel",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "stationId": {
+            "title": "Stationid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stationId",
+          "name",
+          "directionLabel"
+        ],
+        "title": "SnapshotStation",
+        "type": "object"
+      },
+      "StationItem": {
+        "properties": {
+          "directionLabel": {
+            "title": "Directionlabel",
+            "type": "string"
+          },
+          "mobileNo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mobileno"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "stationId": {
+            "title": "Stationid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stationId",
+          "name",
+          "directionLabel",
+          "mobileNo"
+        ],
+        "title": "StationItem",
+        "type": "object"
+      },
+      "StationListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/StationItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "StationListResponse",
+        "type": "object"
+      },
+      "StationRoutesResponse": {
+        "properties": {
+          "destinations": {
+            "items": {
+              "$ref": "#/components/schemas/DestinationItem"
+            },
+            "title": "Destinations",
+            "type": "array"
+          },
+          "stationId": {
+            "title": "Stationid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stationId",
+          "destinations"
+        ],
+        "title": "StationRoutesResponse",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "계약: docs/api-contract.md (v2). 모든 4xx/5xx 는 {\"error\": {\"code\", \"message\", \"details\"}} 형식이다. FastAPI 기본 422 는 400 VALIDATION_FAILED 로 바꿔 응답한다.",
+    "title": "탈 수 있을까? 양주 광역버스 만차 예보 API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "description": "수집기 상태 파일만 읽는다. GBIS 를 부르지 않는다.",
+        "operationId": "get_health_api_v1_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "RATE_LIMITED: 호출 횟수 제한 초과(Retry-After 헤더, 초)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "INTERNAL_ERROR: 서버 내부 오류"
+          }
+        },
+        "summary": "수집 상태(공개 최소)",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/parse-query": {
+      "post": {
+        "description": "text 는 앞뒤 공백을 뺀 1–200자. 빈 문자열·초과면 400. 원문은 저장·로그하지 않는다.",
+        "operationId": "parse_query_api_v1_parse_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ParseQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParseQueryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "VALIDATION_FAILED: 요청 형식·필드 검증 실패"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "RATE_LIMITED: 호출 횟수 제한 초과(Retry-After 헤더, 초)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "INTERNAL_ERROR: 서버 내부 오류"
+          }
+        },
+        "summary": "자연어 질문 → 조회 조건(뼈대 단계: 항상 unavailable)",
+        "tags": [
+          "parse-query"
+        ]
+      }
+    },
+    "/api/v1/snapshot": {
+      "get": {
+        "description": "형식이 틀리면 400, 정류장·목적지가 없으면 404. GBIS 를 부르지 않는다.",
+        "operationId": "get_snapshot_api_v1_snapshot_get",
+        "parameters": [
+          {
+            "description": "출발 정류장 ID. 예: 235000392",
+            "in": "query",
+            "name": "station",
+            "required": true,
+            "schema": {
+              "description": "출발 정류장 ID. 예: 235000392",
+              "pattern": "^[0-9]{1,20}$",
+              "title": "Station",
+              "type": "string"
+            }
+          },
+          {
+            "description": "목적지 코드. 예: jamsil",
+            "in": "query",
+            "name": "destination",
+            "required": true,
+            "schema": {
+              "description": "목적지 코드. 예: jamsil",
+              "pattern": "^[a-z_]{1,32}$",
+              "title": "Destination",
+              "type": "string"
+            }
+          },
+          {
+            "description": "목적지 도착 마감 HH:MM(KST)",
+            "in": "query",
+            "name": "deadline",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "목적지 도착 마감 HH:MM(KST)",
+              "title": "Deadline"
+            }
+          },
+          {
+            "description": "개발·시연용(계약 12장). FAKE_DATA=true 일 때만 받고, 아니면 무시한다. 허용 값: example, status_ok, status_not_yet, status_insufficient_cases, status_not_validated, status_stale, status_missing_input, status_outside_hours, alt_recommended, alt_no_alternative, alt_arrival_unavailable, alt_undecidable, service_outside_collection, service_outside_forecast_hours, published",
+            "in": "query",
+            "name": "scenario",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "개발·시연용(계약 12장). FAKE_DATA=true 일 때만 받고, 아니면 무시한다. 허용 값: example, status_ok, status_not_yet, status_insufficient_cases, status_not_validated, status_stale, status_missing_input, status_outside_hours, alt_recommended, alt_no_alternative, alt_arrival_unavailable, alt_undecidable, service_outside_collection, service_outside_forecast_hours, published",
+              "title": "Scenario"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "VALIDATION_FAILED: 요청 형식·필드 검증 실패"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "NOT_FOUND: 경로 또는 리소스 없음"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "RATE_LIMITED: 호출 횟수 제한 초과(Retry-After 헤더, 초)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "INTERNAL_ERROR: 서버 내부 오류"
+          }
+        },
+        "summary": "현재 버스·0석 위험·대안(같은 계산 시점)",
+        "tags": [
+          "snapshot"
+        ]
+      }
+    },
+    "/api/v1/snapshot/{snapshotId}/explanation": {
+      "get": {
+        "description": "uuid 형식이 아니면 400, 스냅샷이 없거나 만료됐으면 404.",
+        "operationId": "get_explanation_api_v1_snapshot__snapshotId__explanation_get",
+        "parameters": [
+          {
+            "description": "스냅샷 ID(uuid)",
+            "in": "path",
+            "name": "snapshotId",
+            "required": true,
+            "schema": {
+              "description": "스냅샷 ID(uuid)",
+              "format": "uuid",
+              "title": "Snapshotid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExplanationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "VALIDATION_FAILED: 요청 형식·필드 검증 실패"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "NOT_FOUND: 경로 또는 리소스 없음"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "RATE_LIMITED: 호출 횟수 제한 초과(Retry-After 헤더, 초)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "INTERNAL_ERROR: 서버 내부 오류"
+          }
+        },
+        "summary": "스냅샷 설명(뼈대 단계: 항상 고정 문구)",
+        "tags": [
+          "snapshot"
+        ]
+      }
+    },
+    "/api/v1/stations": {
+      "get": {
+        "operationId": "list_stations_api_v1_stations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StationListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "RATE_LIMITED: 호출 횟수 제한 초과(Retry-After 헤더, 초)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "INTERNAL_ERROR: 서버 내부 오류"
+          }
+        },
+        "summary": "출발 정류장 목록",
+        "tags": [
+          "stations"
+        ]
+      }
+    },
+    "/api/v1/stations/{stationId}/routes": {
+      "get": {
+        "description": "형식이 틀리면 400, 없는 정류장이면 404.",
+        "operationId": "get_station_routes_api_v1_stations__stationId__routes_get",
+        "parameters": [
+          {
+            "description": "GBIS 정류소 ID(숫자 1–20자리)",
+            "in": "path",
+            "name": "stationId",
+            "required": true,
+            "schema": {
+              "description": "GBIS 정류소 ID(숫자 1–20자리)",
+              "pattern": "^[0-9]{1,20}$",
+              "title": "Stationid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StationRoutesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "VALIDATION_FAILED: 요청 형식·필드 검증 실패"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "NOT_FOUND: 경로 또는 리소스 없음"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "RATE_LIMITED: 호출 횟수 제한 초과(Retry-After 헤더, 초)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "INTERNAL_ERROR: 서버 내부 오류"
+          }
+        },
+        "summary": "정류장의 노선·목적지",
+        "tags": [
+          "stations"
+        ]
+      }
+    }
+  }
+}
