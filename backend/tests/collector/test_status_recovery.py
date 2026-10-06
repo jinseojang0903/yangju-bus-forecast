@@ -6,8 +6,7 @@ from pathlib import Path
 
 from app.collector.status import recover_counts
 from app.collector.storage import raw_poll_path
-from app.core.settings import CallLimits
-from tests.collector.helpers import FakeClock, RecordingHandler, kst, make_collector
+from tests.collector.helpers import SMALL_LIMITS, FakeClock, RecordingHandler, kst, make_collector
 
 LOCATION = "buslocationservice"
 ARRIVAL = "busarrivalservice"
@@ -69,8 +68,7 @@ def test_recovered_counts_still_enforce_cap(data_dir: Path) -> None:
     _two_cycles(data_dir, clock, handler)  # 위치 4, 도착 2
     (data_dir / "status.json").write_text("not json", encoding="utf-8")
 
-    small = CallLimits(daily_limit_per_api=5, daily_safe_limit_per_api=3)
-    restarted = make_collector(data_dir, clock, handler, limits=small)
+    restarted = make_collector(data_dir, clock, handler, limits=SMALL_LIMITS)
     before = handler.count("getBusLocationListv2")
     outcomes = restarted.poll_cycle()
     assert handler.count("getBusLocationListv2") == before

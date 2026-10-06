@@ -101,7 +101,8 @@ def _targets(data_dir: Path) -> dict:
 def test_route_limit_is_four() -> None:
     assert CALL_LIMITS.route_daily_limit == 4
     assert CALL_LIMITS.safe_limit_for(ROUTE_SERVICE) == 4
-    assert CALL_LIMITS.safe_limit_for("buslocationservice") == 980
+    assert CALL_LIMITS.safe_limit_for("buslocationservice") == 9800
+    assert CALL_LIMITS.safe_limit_for("busarrivalservice") == 980
 
 
 def test_discover_uses_four_calls_and_saves_reference(data_dir: Path) -> None:

@@ -2,7 +2,7 @@ import json
 
 import httpx
 
-from app.collector.gbis import as_list, parse_body
+from app.collector.gbis import GbisClient, as_list, parse_body
 from app.collector.redact import Redactor
 from app.collector.summary import field_presence, summarize, vehicle_examples
 from app.core.settings import GBIS_BUS_ARRIVAL, GBIS_BUS_LOCATION
@@ -45,6 +45,77 @@ def test_parse_gateway_xml_error_is_failure() -> None:
     assert parsed.error is not None and "SERVICE_KEY_IS_NOT_REGISTERED_ERROR" in parsed.error
     assert parsed.result_code == "30"
     assert parsed.body == text  # 원문 그대로 남긴다
+
+
+def test_parse_empty_response_is_not_failure() -> None:
+    # 운행하지 않는 시간의 P 노선 등: HTTP 200 + msgHeader·msgBody 없는 response.
+    data = {"response": {"comMsgHeader": ""}}
+    parsed = parse_body(json.dumps(data), LOCATION_KEY)
+    assert parsed.ok is True and parsed.is_empty is True and parsed.is_no_result is True
+    assert parsed.error is None and parsed.items == [] and parsed.result_code is None
+    assert parsed.body == data  # 원본 그대로
+    assert parse_body(json.dumps({"response": {}}), LOCATION_KEY).is_empty is True
+    # 게이트웨이 오류(JSON)는 빈 응답이 아니라 실패다.
+    gateway_in_response = json.dumps(
+        {"response": {"cmmMsgHeader": {"returnAuthMsg": "SERVICE_KEY_IS_NOT_REGISTERED_ERROR"}}}
+    )
+    gateway = parse_body(gateway_in_response, LOCATION_KEY)
+    assert gateway.ok is False and gateway.is_empty is False
+    top_level = json.dumps(
+        {"OpenAPI_ServiceResponse": {"cmmMsgHeader": {"errMsg": "SERVICE ERROR"}}}
+    )
+    assert parse_body(top_level, LOCATION_KEY).ok is False
+    # 결과 없음(resultCode 4)은 빈 응답과 구분한다.
+    no_result = parse_body(load_fixture("bus_location_no_result_synthetic.json"), LOCATION_KEY)
+    assert no_result.is_no_result is True and no_result.is_empty is False
+
+
+def test_parse_gateway_quota_exceeded_is_detected() -> None:
+    base = load_fixture("gateway_error_synthetic.xml")
+    by_marker = base.replace(
+        "SERVICE_KEY_IS_NOT_REGISTERED_ERROR", "LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR"
+    )
+    parsed = parse_body(by_marker, LOCATION_KEY)
+    assert parsed.ok is False and parsed.is_quota_exceeded is True
+    assert parsed.error is not None and parsed.error.startswith("하루 호출량 초과")
+
+    by_code = base.replace(
+        "<returnReasonCode>30</returnReasonCode>", "<returnReasonCode>22</returnReasonCode>"
+    )
+    assert parse_body(by_code, LOCATION_KEY).is_quota_exceeded is True
+    assert parse_body(base, LOCATION_KEY).is_quota_exceeded is False
+
+    portal_json = json.dumps(
+        {"response": {"header": {"resultCode": "22", "resultMsg": "LIMITED NUMBER"}}}
+    )
+    assert parse_body(portal_json, LOCATION_KEY).is_quota_exceeded is True
+    # GBIS 자체 resultCode 22 는 호출량 초과로 보지 않는다(뜻이 확인되지 않았다).
+    gbis_json = json.dumps({"response": {"msgHeader": {"resultCode": 22, "resultMessage": "x"}}})
+    assert parse_body(gbis_json, LOCATION_KEY).is_quota_exceeded is False
+    assert (
+        parse_body(load_fixture("bus_location_ok_synthetic.json"), LOCATION_KEY).is_quota_exceeded
+        is False
+    )
+
+
+def test_client_passes_quota_flag_and_uses_timeout() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        text = load_fixture("gateway_error_synthetic.xml").replace(
+            "SERVICE_KEY_IS_NOT_REGISTERED_ERROR",
+            "LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR",
+        )
+        return httpx.Response(200, text=text)
+
+    settings = make_settings()
+    client = make_client(handler, settings, Redactor(settings.secret_values()))
+    result = client.call(GBIS_BUS_LOCATION, {"routeId": "900000001"})
+    assert result.ok is False and result.is_quota_exceeded is True
+
+    timed = GbisClient(FAKE_KEY, Redactor(), timeout_sec=8.0)
+    try:
+        assert timed._http.timeout.read == 8.0 and timed._http.timeout.connect == 8.0
+    finally:
+        timed.close()
 
 
 def test_parse_unknown_result_code_is_failure() -> None:

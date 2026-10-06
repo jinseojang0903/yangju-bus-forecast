@@ -18,6 +18,8 @@ from app.core.settings import (
     GBIS_GATEWAY_ERROR_MARKERS,
     GBIS_HTTP_TIMEOUT_SEC,
     GBIS_NO_RESULT_CODES,
+    GBIS_QUOTA_EXCEEDED_MARKER,
+    GBIS_QUOTA_EXCEEDED_REASON_CODES,
     GBIS_SUCCESS_CODES,
     GbisEndpoint,
 )
@@ -34,6 +36,11 @@ class ParsedBody:
     body: Any  # JSON 이면 객체, 아니면 원문 문자열
     items: list[dict[str, Any]] = field(default_factory=list)
     is_no_result: bool = False
+    # 공공데이터포털 하루 호출량 초과(게이트웨이 오류). 실패이며 별도로 크게 기록한다.
+    is_quota_exceeded: bool = False
+    # 빈 응답: response 는 있으나 msgHeader·msgBody 가 없다(운행 안 하는 시간의 P 노선 등).
+    # 결과 없음과 같이 실패가 아니다(ok=True, is_no_result=True).
+    is_empty: bool = False
 
 
 @dataclass(frozen=True)
@@ -50,6 +57,8 @@ class CallResult:
     body: Any
     items: list[dict[str, Any]] = field(default_factory=list)
     is_no_result: bool = False
+    is_quota_exceeded: bool = False
+    is_empty: bool = False
 
 
 def _normalize_code(value: Any) -> str | None:
@@ -97,17 +106,32 @@ def _parse_non_json(text: str) -> ParsedBody:
     if any(marker in text for marker in GBIS_GATEWAY_ERROR_MARKERS):
         auth_message = _xml_tag(text, "returnAuthMsg")
         err_message = _xml_tag(text, "errMsg")
-        reason_code = _xml_tag(text, "returnReasonCode")
+        reason_code = _normalize_code(_xml_tag(text, "returnReasonCode"))
         message = auth_message or err_message
         error = f"게이트웨이 오류: {message or '알 수 없음'}"
         if reason_code:
             error += f" (returnReasonCode={reason_code})"
+        is_quota_exceeded = (
+            GBIS_QUOTA_EXCEEDED_MARKER in text or reason_code in GBIS_QUOTA_EXCEEDED_REASON_CODES
+        )
+        if is_quota_exceeded:
+            error = "하루 호출량 초과. " + error
         return ParsedBody(
             ok=False,
-            result_code=_normalize_code(reason_code),
+            result_code=reason_code,
             result_message=message,
             error=error,
             body=text,
+            is_quota_exceeded=is_quota_exceeded,
+        )
+    if GBIS_QUOTA_EXCEEDED_MARKER in text:
+        return ParsedBody(
+            ok=False,
+            result_code=None,
+            result_message=GBIS_QUOTA_EXCEEDED_MARKER,
+            error=f"하루 호출량 초과. {GBIS_QUOTA_EXCEEDED_MARKER}",
+            body=text,
+            is_quota_exceeded=True,
         )
     if text.lstrip().startswith("<"):
         code = _normalize_code(_xml_tag(text, "resultCode"))
@@ -122,6 +146,19 @@ def _parse_non_json(text: str) -> ParsedBody:
     return ParsedBody(
         ok=False, result_code=None, result_message=None, error="JSON 이 아닌 응답", body=text
     )
+
+
+def _is_empty_response(data: dict[str, Any], text: str) -> bool:
+    """`{"response": {"comMsgHeader": ""}}` 처럼 response 객체에 msgHeader·msgBody 가 없으면 True.
+
+    포털 표준 header 가 있거나 게이트웨이 오류 표시가 있으면 빈 응답이 아니다(실패로 남긴다).
+    """
+    response = data.get("response")
+    if not isinstance(response, dict):
+        return False
+    if any(key in response for key in ("msgHeader", "msgBody", "header")):
+        return False
+    return not any(marker in text for marker in GBIS_GATEWAY_ERROR_MARKERS)
 
 
 def parse_body(text: str, list_key: str) -> ParsedBody:
@@ -143,6 +180,8 @@ def parse_body(text: str, list_key: str) -> ParsedBody:
     response = data.get("response") if isinstance(data.get("response"), dict) else data
     code: str | None = None
     message: str | None = None
+    # GBIS 자체 resultCode 의 22 는 뜻이 다를 수 있어 포털 표준 header 의 22 만 호출량 초과로 본다.
+    is_quota_exceeded = GBIS_QUOTA_EXCEEDED_MARKER in text
     header = response.get("msgHeader")
     if isinstance(header, dict):
         code = _normalize_code(header.get("resultCode"))
@@ -153,7 +192,19 @@ def parse_body(text: str, list_key: str) -> ParsedBody:
         if isinstance(alt_header, dict):
             code = _normalize_code(alt_header.get("resultCode"))
             message = _as_text(alt_header.get("resultMsg") or alt_header.get("resultMessage"))
+            is_quota_exceeded = is_quota_exceeded or code in GBIS_QUOTA_EXCEEDED_REASON_CODES
 
+    if is_quota_exceeded:
+        return ParsedBody(
+            ok=False,
+            result_code=code,
+            result_message=message,
+            error=f"하루 호출량 초과. resultCode={code} {message or ''}".strip(),
+            body=data,
+            is_quota_exceeded=True,
+        )
+    if _is_empty_response(data, text):
+        return ParsedBody(True, None, None, None, data, [], is_no_result=True, is_empty=True)
     items = _extract_items(response.get("msgBody"), list_key)
     if code is None:
         return ParsedBody(
@@ -186,10 +237,13 @@ class GbisClient:
         service_key: str,
         redactor: Redactor,
         http: httpx.Client | None = None,
+        *,
+        timeout_sec: float = GBIS_HTTP_TIMEOUT_SEC,
     ) -> None:
+        """timeout_sec 는 연결·읽기·쓰기·연결 풀 대기 각각에 적용된다(httpx.Timeout)."""
         self._service_key = service_key
         self._redactor = redactor
-        self._http = http or httpx.Client(timeout=GBIS_HTTP_TIMEOUT_SEC)
+        self._http = http or httpx.Client(timeout=httpx.Timeout(timeout_sec))
 
     @property
     def redactor(self) -> Redactor:
@@ -242,6 +296,8 @@ class GbisClient:
             body=parsed.body,
             items=parsed.items,
             is_no_result=parsed.is_no_result,
+            is_quota_exceeded=parsed.is_quota_exceeded,
+            is_empty=parsed.is_empty,
         )
 
 

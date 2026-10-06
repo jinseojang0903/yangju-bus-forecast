@@ -1,14 +1,42 @@
 # GBIS 수집기 배포 안내 (서버: Ubuntu, 내 PC: Windows PowerShell)
 
 수집기는 평일 **05:30 이상 10:15 미만**(KST)에 GBIS 를 호출해 `data/collected/<날짜>/raw_poll.jsonl` 에 원본을 저장한다(2026-10-07 부터).
+대상(노선마다, 도착 정류장)마다 **독립 작업자**가 자기 주기의 경계(KST 자정 기준 주기의 배수)에서 호출하고, 서로를 기다리지 않는다. 한 대상이 느리거나 실패해도 G1300 10초 호출은 밀리지 않는다.
 
-| 대상 | 주기 | 하루 호출 |
-|---|---|---|
-| 위치 API G1300 | 30초 | 570 |
-| 위치 API 1306 | 60초 | 285 |
-| 도착 API 덕현초교(잠실행) | 60초 | 285 |
+### 수집 대상 (양주시 관할 직행좌석형 광역버스, 사용자 결정 2026-10-06)
 
-API 별 하루 호출은 위치 855회, 도착 285회다. 사용자 기준 상한은 API 별 950회이고, 설정을 바꿔 이를 넘으면 `run` 이 시작하지 않는다(종료 코드 2). 그와 별도로 실제 호출 수가 980회에 닿으면 그날 그 API 호출을 멈춘다.
+| 노선 | routeId | 주기 | 하루 호출 | 비고 |
+|---|---|---|---|---|
+| G1300 | 235000092 | 10초 | 1,710 | 라벨 대상 |
+| 1306 | 235000123 | 30초 | 570 | 라벨 대상 |
+| 1100 | 235000085 | 40초 | 428 | 덕정역→마들역(남양주 1100 222000074 와 다름) |
+| 1101 | 235000115 | 40초 | 428 | |
+| 1304 | 235000118 | 40초 | 428 | |
+| 1407 | 235000131 | 40초 | 428 | |
+| 8300 | 235000120 | 40초 | 428 | |
+| 8906 | 235000103 | 40초 | 428 | |
+| G1200 | 235000104 | 40초 | 428 | |
+| P9601(출근) | 233000371 | 40초 | 428 | 예약버스 |
+| P9602(출근) | 233000373 | 40초 | 428 | 예약버스 |
+| P9603(출근) | 235000127 | 40초 | 428 | 예약버스 |
+| 도착 API 덕현초교(잠실행) | stationId 235000392 | 30초 | 570 | |
+
+목록에만 두고 **수집하지 않는** 노선: G1300N(235000116, 심야), P9601·P9602·P9603 퇴근 편(233000372·233000374·235000128, 아침 창에 운행 안 함), 양주를 지나는 타 시 관할 3800(218000151)·8109(234001236, 사용자 확인 대기).
+
+| API | 하루 예상 호출 | 계획 상한 | 안전 상한(닿으면 그날 멈춤) | 포털 한도 |
+|---|---|---|---|---|
+| 위치(buslocationservice) | 6,560 | 9,000 | 9,800 | 10,000(운영계정) |
+| 도착(busarrivalservice) | 570 | 950 | 980 | 1,000 |
+| 노선(busrouteservice) | discover 때만 | 4 | 4 | 1,000 |
+
+- 하루 예상 호출이 그 API 의 계획 상한을 넘는 설정이면 `run` 이 시작하지 않는다(종료 코드 2).
+- 실제 호출 수가 안전 상한에 닿으면 그 API 의 **모든 작업자**가 그날 호출을 멈춘다(`call_cap_reached`).
+- JSONL 은 **전 노선**을 남긴다(하루 약 7,130줄). 운행편·라벨·DB 적재는 라벨 대상(G1300·1306)만 한다.
+- 호출 타임아웃은 그 대상의 주기보다 짧다: min(10초, 주기 − 2초). G1300 은 8초.
+- 운행하지 않는 시간에 GBIS 가 `{"response":{"comMsgHeader":""}}` 처럼 머리·본문 없는 응답을 주면 **빈 응답**(결과 없음과 같은 취급)이다. 실패로 세지 않고 `status` 의 `targets.<대상>.empty` 에 센다. 원본은 그대로 저장한다.
+- 같은 API 에서 포털 호출량 초과 응답이 **연속 3회** 오면 그날 그 API 는 **5분에 한 번만** 시험 호출한다(`status` 의 `apis.<서비스>.throttled: true`, 로그 ERROR `quota_throttle_started`). 정상 응답이 오면 원래 주기로 돌아간다(INFO `quota_throttle_ended`).
+- 수집 창 안에서 한 대상이 max(3 × 주기, 60초) 넘게 호출을 시도하지 않으면 ERROR `worker_stalled target=... since=...` 를 한 번 남긴다(기록만 하고 작업자를 재시작하지는 않는다).
+
 이 문서의 명령은 **윈도우 PowerShell 에서 복사해 붙여 넣는** 순서로 썼다.
 `<서버IP>`, `<키파일경로>` 처럼 꺾쇠로 표시한 부분은 자기 값으로 바꾼다(꺾쇠도 지운다).
 `"<키파일경로>"` 처럼 따옴표 안에 있는 값은 **따옴표는 남긴다**. 경로에 공백(예: `바탕 화면`)이 있어도 동작한다.
@@ -31,8 +59,9 @@ API 별 하루 호출은 위치 855회, 도착 285회다. 사용자 기준 상�
 
 ## 0. 가장 중요한 경고: 한 곳에서만 돌린다
 
-같은 서비스 키로 **서버와 PC 에서 동시에** 수집기를 돌리면 위치 API 호출이 하루 855 × 2 = **1,710회**가 되어
-한도(1,000회)를 넘는다. 한도를 넘으면 그날 남은 시간의 데이터는 다시 얻을 수 없다.
+같은 서비스 키로 **서버와 PC 에서 동시에** 수집기를 돌리면 위치 API 호출이 하루 6,560 × 2 = **13,120회**(한도 10,000회),
+도착 API 호출이 570 × 2 = **1,140회**(한도 1,000회)가 되어 한도를 넘는다. 한도를 넘으면 그날 남은 시간의 데이터는 다시 얻을 수 없다.
+두 수집기는 상태 파일이 달라 서로의 호출 수를 모르므로, 수집기 안의 상한으로는 막을 수 없다.
 서버로 옮기면 PC 의 작업 스케줄러를 끄고(10장 마지막 참고), PC 로 돌릴 때는 서버 서비스를 멈춘다.
 
 ```powershell
@@ -172,8 +201,8 @@ cd ~/Yangju/backend && ~/.local/bin/uv sync --frozen
 cd ~/Yangju/backend && ~/.local/bin/uv run --frozen python -m app.collector once
 ```
 
-`once` 는 지금 시각과 상관없이 위치 2회 + 도착 1회를 호출하고, 각 호출의 `http=200 ok=True` 와 항목 수, 필드 존재 여부를 출력한다.
-이 시험도 하루 호출 수에 포함된다(3회).
+`once` 는 지금 시각과 상관없이 수집 대상 전부를 1회씩(위치 12회 + 도착 1회) 호출하고, 각 호출의 `http=200 ok=True` 와 항목 수, 필드 존재 여부를 출력한다.
+이 시험도 하루 호출 수에 포함된다(13회).
 
 ---
 
@@ -226,6 +255,16 @@ cd ~/Yangju/backend && ~/.local/bin/uv sync --frozen
 sudo systemctl restart yangju-collector
 ```
 
+### 서비스 파일(`deploy/yangju-collector.service`)도 바뀐 경우
+
+위 (가)·(나) 다음에 한 번 더 복사하고 다시 읽힌다(이번 전 노선 변경에서는 설명 줄만 바뀌었다):
+
+```bash
+sudo cp ~/Yangju/deploy/yangju-collector.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl restart yangju-collector
+```
+
 ### 반영 확인
 
 서비스가 다시 떴는지:
@@ -241,13 +280,14 @@ journalctl -u yangju-collector -n 20 --no-pager
 cd ~/Yangju/backend && ~/.local/bin/uv run --frozen python -m app.collector status
 ```
 
-`config` 에 아래처럼 나오면 된다.
+`config` 에서 아래를 확인한다(실제 출력은 한 줄이다. 보기 좋게 줄였다).
 
-```
-"config":{"window":"05:30-10:15","intervals":{"location:G1300":30,"location:1306":60,"arrival:덕현초교":60},"planned_daily_calls":{"buslocationservice":855,"busarrivalservice":285},"planned_daily_max":950}
-```
+- `"window":"05:30-10:15"`
+- `"intervals"` 에 `"location:G1300":10`, `"location:1306":30`, 나머지 노선 `40`, `"arrival:덕현초교":30` 이 모두 13개
+- `"apis":{"buslocationservice":{"planned":6560,"daily_limit":10000,"safe_limit":9800,"planned_max":9000},"busarrivalservice":{"planned":570,"daily_limit":1000,"safe_limit":980,"planned_max":950}}`
+- `"not_collected":["G1300N","P9601(퇴근)","P9602(퇴근)","P9603(퇴근)","3800","8109"]`
 
-수집 창 안에서 한 번 이상 돈 뒤에는 실행 중인 프로세스가 남긴 `interval_sec`(기본 tick, 30)와 `intervals`·`planned_daily_calls` 도 같은 값인지 본다.
+수집 창 안에서 한 번 이상 돈 뒤에는 실행 중인 프로세스가 남긴 `intervals`·`planned_daily_calls`·`limits` 도 같은 값인지, `targets` 에 대상 13개가 다 있는지 본다.
 
 ---
 
@@ -265,13 +305,14 @@ systemctl status yangju-collector --no-pager
 journalctl -u yangju-collector -n 50 --no-pager
 ```
 
-한 줄 상태(JSON). `running`, `in_window_now`, `last_success_at`, `apis` 의 호출 수, `last_error` 를 본다:
+한 줄 상태(JSON). `running`, `in_window_now`, `last_success_at`, `apis` 의 호출 수(`quota_exceeded` 가 0 인지), `last_error` 를 본다.
+`targets` 에는 대상별 주기(`interval_sec`), 오늘 `calls`·`success`·`failure`, 늦어서 건너뛴 주기 `skipped_cycles`, 상한으로 안 부른 `cap_skips`, 호출량 초과 감속으로 안 부른 `throttle_skips`, 빈 응답 `empty`(성공에 포함), `last_success_at` 이 있다. G1300 의 `skipped_cycles` 가 0 근처인지 본다:
 
 ```bash
 cd ~/Yangju/backend && ~/.local/bin/uv run --frozen python -m app.collector status
 ```
 
-오늘 저장된 줄 수(창 안에서는 1분에 4줄씩 늘어난다: G1300 2줄, 1306 1줄, 도착 1줄. 하루 끝나면 1,140줄 근처):
+오늘 저장된 줄 수(창 안에서는 1분에 약 25줄씩 늘어난다: G1300 6줄, 1306 2줄, 40초 노선 10개 15줄, 도착 2줄. 하루 끝나면 7,130줄 근처):
 
 ```bash
 wc -l ~/Yangju/data/collected/$(TZ=Asia/Seoul date +%F)/raw_poll.jsonl
@@ -331,8 +372,8 @@ uv run python -m app.collector run --exit-after-window
 ```
 
 `--exit-after-window` 의 동작:
-- 평일 05:30 전에 실행하면 05:30 까지 기다렸다가 수집을 시작하고, 10:15 가 되면 스스로 종료한다(마지막 호출은 10:14:30 G1300).
-- 평일 05:30~10:15 사이에 실행하면 바로 다음 30초 경계부터 수집하고, 10:15 에 종료한다.
+- 평일 05:30 전에 실행하면 05:30 까지 기다렸다가 수집을 시작하고, 10:15 가 되면 스스로 종료한다(마지막 호출은 10:14:50 G1300).
+- 평일 05:30~10:15 사이에 실행하면 대상마다 바로 다음 자기 주기 경계부터 수집하고, 10:15 에 종료한다.
 - 주말이거나 평일 10:15 이후에 실행하면 아무것도 호출하지 않고 바로 종료한다.
 
 멈추려면 `Ctrl+C` 를 누른다.
@@ -408,14 +449,14 @@ powercfg /change hibernate-timeout-ac 0
 | 명령 | 하는 일 |
 |---|---|
 | `uv run python -m app.collector discover` | 노선·정류장 ID 를 찾아 근거 출력, `reference/<날짜>/` 에 원본 기록과 `targets.json` 저장. 노선 API 하루 4회 이하라 **하루 1번만** 실행 |
-| `uv run python -m app.collector once` | 지금 1회 수집하고 요약 출력 |
-| `uv run python -m app.collector run` | 평일 05:30~10:15 대상별 주기로 수집(G1300 30초, 1306·도착 60초. 계속 실행). 하루 예상 호출이 API 별 950회를 넘는 설정이면 시작하지 않음(종료 코드 2) |
+| `uv run python -m app.collector once` | 수집 대상 전부를 1회씩 수집하고 요약 출력 |
+| `uv run python -m app.collector run` | 평일 05:30~10:15 대상마다 독립 작업자로 자기 주기에 수집(G1300 10초, 1306·도착 30초, 나머지 40초. 계속 실행). 하루 예상 호출이 API 별 계획 상한(위치 9,000, 도착 950)을 넘는 설정이면 시작하지 않음(종료 코드 2) |
 | `uv run python -m app.collector run --exit-after-window` | 그날 창이 끝나면 종료(작업 스케줄러용) |
-| `uv run python -m app.collector run --trial-until HH:MM [--interval-sec N] [--only-route NAME ...] [--skip-arrival]` | 시운전. `--only-route G1300` 처럼 노선을 골라 위치만 부를 수 있고(여러 번 쓸 수 있음, settings 의 노선 이름만), `--skip-arrival` 이면 도착 API 를 부르지 않는다. 두 옵션도 `--trial-until` 과 함께일 때만 쓸 수 있다(예: 갱신 간격 측정 `--trial-until 10:50 --interval-sec 10 --only-route G1300 --skip-arrival`). 수집 창·요일을 무시하고 오늘 그 시각(KST) **전**까지 N초(기본 60)마다 수집한 뒤 종료(예: `--trial-until 11:30` 이면 11:29 호출이 마지막). 경계는 KST 자정 기준 N초의 배수다(40초면 10:20:00, 10:20:40, 10:21:20 …). N 은 10~60 이고 86400 의 약수여야 한다(10·15·20·30·40·45·48·60 등). `--interval-sec` 는 `--trial-until` 과 함께일 때만 쓸 수 있다. 기록은 `mode=trial`, `interval_sec=N` 으로 남아 평가에서 제외한다. 호출 수는 하루 한도에 포함된다(40초면 5시간 기준 위치 API 900회). 지난 시각·형식 오류·허용되지 않는 N 이면 종료 코드 2 |
+| `uv run python -m app.collector run --trial-until HH:MM [--interval-sec N] [--only-route NAME ...] [--skip-arrival]` | 시운전. 수집 창·요일을 무시하고 오늘 그 시각(KST) **전**까지 수집 대상 전부를 **각자 정식 주기**로 부른 뒤, 그 시각에 모든 작업자를 멈추고 종료한다(예: `--trial-until 11:30` 이면 G1300 은 11:29:50 호출이 마지막). `--interval-sec N` 을 주면 모든 대상을 N초마다 부른다. 경계는 KST 자정 기준 N초의 배수다(40초면 10:20:00, 10:20:40, 10:21:20 …). N 은 10~60 이고 86400 의 약수여야 한다(10·15·20·30·40·45·48·60 등). `--only-route G1300` 처럼 수집 노선을 골라 위치만 부를 수 있고(여러 번 쓸 수 있음, 수집 노선 이름만. 예: `--only-route "P9601(출근)"`), `--skip-arrival` 이면 도착 API 를 부르지 않는다. 세 옵션 모두 `--trial-until` 과 함께일 때만 쓸 수 있다. 기록은 `mode=trial` 로 남아 평가에서 제외한다. 호출 수는 하루 한도에 포함된다(전 노선 10분 시운전이면 위치 약 230회, 도착 20회). 지난 시각·형식 오류·허용되지 않는 N·모르는 노선이면 종료 코드 2 |
 | `uv run python -m app.collector status` | 오늘 상태 한 줄 JSON |
 | `uv run python -m app.collector save-fixture` | 실제 응답을 `backend/tests/fixtures/gbis/` 에 저장(키 제거) |
 
-종료 코드: 0 정상, 1 호출 실패 있음, 2 설정 누락(서비스 키·routeId·stationId) 또는 discover 가 후보를 못 골랐거나 노선 API 하루 상한으로 멈춤, 3 이미 실행 중.
+종료 코드: 0 정상, 1 호출 실패 있음, 2 설정 누락(서비스 키·routeId·stationId)·잘못된 옵션·정식 수집 설정이 계획 상한을 넘음, 또는 discover 가 후보를 못 골랐거나 노선 API 하루 상한으로 멈춤, 3 이미 실행 중.
 
 ---
 
@@ -433,7 +474,7 @@ poll_failed api=getBusLocationListv2 ... error=게이트웨이 오류: SERVICE_K
 ```
 
 - `SERVICE_KEY_IS_NOT_REGISTERED_ERROR`: 키가 틀렸거나, 해당 API(버스위치정보 v2·버스도착정보 v2·버스노선 v2)를 활용신청하지 않았거나, 승인 직후라 아직 반영되지 않았다(반영에 1시간 이상 걸리기도 한다).
-- `LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR`: 하루 호출 한도를 넘었다. 다른 곳(PC·서버)에서 같은 키로 돌고 있지 않은지 확인한다.
+- `LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR`(또는 `returnReasonCode=22`): 포털 하루 호출 한도를 넘었다. 수집기는 이를 따로 알아보고 그날 처음 받았을 때 ERROR `GBIS_DAILY_QUOTA_EXCEEDED service=...` 를 남기며, `status` 의 `apis.<서비스>.quota_exceeded` 에 횟수를 센다. 다른 곳(PC·서버)에서 같은 키로 돌고 있지 않은지, 포털의 그 API 한도(위치는 운영계정 10,000회)가 맞는지 확인한다.
 - `config_missing name=GBIS_SERVICE_KEY`: `backend/.env` 가 없거나 `GBIS_SERVICE_KEY=` 가 비어 있다. 4장을 다시 한다.
 - 키는 공공데이터포털 마이페이지의 "일반 인증키(Decoding)" 값을 권장한다. Encoding 값(`%` 포함)을 넣어도 수집기가 한 번 디코딩해서 쓴다.
 
@@ -442,10 +483,13 @@ poll_failed api=getBusLocationListv2 ... error=게이트웨이 오류: SERVICE_K
 서비스가 돌고 있을 때 `once`·`save-fixture` 를 실행하면 이 메시지가 나온다(정상). 시험이 필요하면 서비스를 잠깐 멈춘다.
 
 **`call_cap_reached`**
-그 API 의 오늘 호출 수가 안전 상한(980회)에 닿아 호출을 멈췄다. 다음 날 0시(KST)에 자동으로 다시 센다.
+그 API 의 오늘 호출 수가 안전 상한(위치 9,800회, 도착 980회)에 닿아 그 API 의 모든 작업자가 호출을 멈췄다. 다음 날 0시(KST)에 자동으로 다시 센다.
 
-**`cycles_skipped`**
-한 주기가 기본 간격(30초) 넘게 걸려 다음 주기를 건너뛰었다(몰아서 호출하지 않는다). 가끔이면 괜찮고, 자주 보이면 네트워크를 확인한다.
+**`cycles_skipped target=...`**
+그 대상의 호출 한 번이 자기 주기보다 오래 걸려 다음 주기를 건너뛰었다(몰아서 호출하지 않는다). 다른 대상에는 영향이 없다. `status` 의 `targets.<대상>.skipped_cycles` 에 센다. 가끔이면 괜찮고, 자주 보이면 네트워크를 확인한다.
+
+**`lock_wait_slow lock=status|jsonl`**
+상태 파일·JSONL 쓰기 잠금을 0.5초 넘게 기다렸다. 디스크가 느리다는 뜻이다(PC 라면 데이터 폴더가 OneDrive 동기화 중인지 본다). 자주 보이면 G1300 호출이 밀릴 수 있다.
 
 **서비스가 계속 재시작된다**
 `journalctl -u yangju-collector -n 100 --no-pager` 로 원인을 본다. `config_missing ids=...` 이면 settings.py 의 routeId·stationId 가 비어 있는 코드로 배포된 것이다.

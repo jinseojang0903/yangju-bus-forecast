@@ -1,4 +1,4 @@
-"""시운전(run --trial-until HH:MM): 창 밖에서도 그 시각 미만까지 1분마다, mode=trial."""
+"""시운전(run --trial-until HH:MM): 창 밖에서도 그 시각 미만까지 대상별 주기로, mode=trial."""
 
 import json
 from dataclasses import replace
@@ -9,9 +9,13 @@ import pytest
 from app.collector import cli
 from app.collector.collector import MODE_TRIAL
 from app.collector.redact import Redactor
-from app.core.settings import COLLECT_TARGET, CallLimits
+from app.core.settings import COLLECT_TARGET
 from tests.collector.helpers import (
+    G1300_ID,
     MIXED_TARGET,
+    MULTI_TARGET,
+    R1100_ID,
+    SMALL_LIMITS,
     FakeClock,
     OvershootClock,
     RecordingHandler,
@@ -54,11 +58,31 @@ def test_trial_outside_window_polls_until_before_end_time(data_dir: Path, clock_
 def test_trial_respects_call_cap(data_dir: Path) -> None:
     handler = RecordingHandler()
     clock = FakeClock(TUESDAY_1100)
-    small = CallLimits(daily_limit_per_api=5, daily_safe_limit_per_api=3)
-    make_collector(data_dir, clock, handler, mode=MODE_TRIAL, limits=small).run_trial(
+    make_collector(data_dir, clock, handler, mode=MODE_TRIAL, limits=SMALL_LIMITS).run_trial(
         kst(2026, 10, 6, 11, 5)
     )
     assert handler.count("getBusLocationListv2") == 3
+
+
+def test_trial_stops_all_workers_at_until(data_dir: Path) -> None:
+    # 대상별 주기(10/30/40초, 도착 30초)로 11:00:00 이상 11:01:00 미만, 그 뒤 작업자 모두 끝.
+    handler = RecordingHandler()
+    clock = FakeClock(TUESDAY_1100)
+    make_collector(data_dir, clock, handler, mode=MODE_TRIAL, target=MULTI_TARGET).run_trial(
+        kst(2026, 10, 6, 11, 1)
+    )
+
+    records = _jsonl(data_dir)
+    assert all(r["collected_at"] < "2026-10-06T11:01" for r in records)
+    by_target: dict[str, int] = {}
+    for record in records:
+        key = record["params"].get("routeId", "arrival")
+        by_target[key] = by_target.get(key, 0) + 1
+    assert by_target == {G1300_ID: 6, "900000002": 2, R1100_ID: 2, "arrival": 2}
+    assert clock.alive_jobs == 0
+    assert len(clock.finished_jobs) == 4
+    assert clock.now() < kst(2026, 10, 6, 11, 1)
+    assert {r["mode"] for r in records} == {"trial"}
 
 
 def test_resolve_trial_until() -> None:
@@ -160,14 +184,30 @@ def test_trial_without_interval_uses_per_target_intervals(data_dir: Path) -> Non
     assert starts == ["11:00:00"] * 3 + ["11:00:30"]
 
 
-def test_formal_run_rejected_when_planned_calls_exceed_950(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    "change",
+    [
+        # 수집 노선 12개를 모두 10초로: 위치 하루 예상 12 × 1,710 = 20,520 > 9,000
+        {"route_interval": 10},
+        # 도착을 10초로: 도착 하루 예상 1,710 > 950
+        {"arrival_interval": 10},
+    ],
+    ids=["location-over-9000", "arrival-over-950"],
+)
+def test_formal_run_rejected_when_planned_calls_exceed_api_max(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: dict
 ) -> None:
-    # 설정 주입: G1300·1306 을 10초로 하면 위치 API 하루 예상 1710+1710 회 > 950.
-    heavy = replace(
-        COLLECT_TARGET,
-        routes=tuple(replace(r, interval_sec=10) for r in COLLECT_TARGET.routes),
-    )
+    heavy = COLLECT_TARGET
+    if "route_interval" in change:
+        heavy = replace(
+            heavy,
+            route_catalog=tuple(
+                replace(r, interval_sec=change["route_interval"])
+                for r in COLLECT_TARGET.route_catalog
+            ),
+        )
+    if "arrival_interval" in change:
+        heavy = replace(heavy, arrival_interval_sec=change["arrival_interval"])
     monkeypatch.setattr(cli, "COLLECT_TARGET", heavy)
     assert _cmd_run(tmp_path, exit_after_window=False) == 2
     assert list(tmp_path.iterdir()) == []
@@ -224,13 +264,18 @@ def test_trial_10_seconds_only_g1300_without_arrival(data_dir: Path) -> None:
 def test_trial_target_options() -> None:
     assert cli.trial_target(None, skip_arrival=False) is COLLECT_TARGET
     both = cli.trial_target(["1306", "G1300"], skip_arrival=False)
-    assert [r.route_name for r in both.routes] == ["G1300", "1306"]
+    assert [r.route_name for r in both.collect_routes] == ["G1300", "1306"]
+    assert both.routes == COLLECT_TARGET.routes  # 라벨 대상 목록은 그대로
     assert both.board_station_id == COLLECT_TARGET.board_station_id
+    other = cli.trial_target(["1100"], skip_arrival=False)
+    assert [r.route_name for r in other.collect_routes] == ["1100"]
     no_arrival = cli.trial_target(None, skip_arrival=True)
     assert no_arrival.board_station_id is None
-    assert no_arrival.routes == COLLECT_TARGET.routes
+    assert no_arrival.collect_routes == COLLECT_TARGET.collect_routes
     with pytest.raises(ValueError):
         cli.trial_target(["G9999"], skip_arrival=False)
+    with pytest.raises(ValueError):  # 목록에는 있지만 수집하지 않는 노선
+        cli.trial_target(["G1300N"], skip_arrival=False)
 
 
 @pytest.mark.parametrize(

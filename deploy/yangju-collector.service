@@ -1,5 +1,5 @@
 [Unit]
-Description=Yangju GBIS collector (weekday 05:00-10:00 KST, every minute)
+Description=Yangju GBIS collector (weekday 05:30-10:15 KST, per-route workers)
 Wants=network-online.target
 After=network-online.target
 
@@ -12,7 +12,8 @@ Restart=always
 RestartSec=10
 # Python 출력을 바로 journal 로 보낸다.
 Environment=PYTHONUNBUFFERED=1
-# SIGTERM 을 받으면 진행 중인 호출(최대 10초)을 마치고 끝낸다.
+# SIGTERM 을 받으면 모든 작업자가 진행 중인 호출을 마치고 끝낸다. 호출 타임아웃은 10초 이하지만
+# httpx 는 단계별(연결·읽기 등) 타임아웃이라 한 호출의 최악 시간은 더 길 수 있다.
 TimeoutStopSec=30
 # 최소 권한. 새 파일은 소유자만 읽는다(.env·원본·상태 파일).
 NoNewPrivileges=yes

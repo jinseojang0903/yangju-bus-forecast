@@ -2,14 +2,16 @@
 
 하루 호출 수를 여기에 누적해 재시작해도 0 으로 돌아가지 않게 한다.
 날짜(KST)가 바뀌면 새로 센다.
+StatusStore 자체는 잠그지 않는다. 여러 작업자가 쓰면 호출하는 쪽(Collector)이 잠근다.
 """
 
+import copy
 import json
 import logging
 import os
 import re
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +23,6 @@ from app.core.settings import (
     COLLECT_TARGET,
     COLLECT_WINDOW,
     GBIS_ENDPOINTS,
-    PLANNED_DAILY_MAX,
     REFERENCE_RECORD_SUFFIX,
     STATUS_FILENAME,
     CallLimits,
@@ -58,6 +59,44 @@ def _empty_api_counter() -> dict[str, Any]:
         "consecutive_failures": 0,
         "capped": False,
         "capped_at": None,
+        "quota_exceeded": 0,  # 포털 하루 호출량 초과 응답 수
+        "quota_exceeded_at": None,  # 오늘 처음 받은 시각
+        "quota_exceeded_consecutive": 0,  # 정상 응답 없이 이어진 호출량 초과 응답 수
+        "throttled": False,  # True 면 이 API 는 시험 호출 간격으로만 부른다
+        "throttled_at": None,
+        "next_probe_at": None,
+    }
+
+
+def _empty_target_counter(interval_sec: int) -> dict[str, Any]:
+    return {
+        "interval_sec": interval_sec,
+        "calls": 0,
+        "success": 0,
+        "failure": 0,
+        "consecutive_failures": 0,
+        "empty": 0,  # 빈 응답 수(성공에 포함된다)
+        "skipped_cycles": 0,  # 늦어서 건너뛴 주기 수
+        "cap_skips": 0,  # 안전 상한 때문에 부르지 않은 수
+        "throttle_skips": 0,  # 호출량 초과 감속 중이라 부르지 않은 수
+        "last_attempt_at": None,
+        "last_success_at": None,
+    }
+
+
+def config_report() -> dict[str, Any]:
+    """지금 코드의 정식 수집 설정(배포 후 바뀌었는지 확인용)."""
+    planned = planned_daily_calls(COLLECT_TARGET)
+    limits = CALL_LIMITS.as_dict()
+    return {
+        "window": f"{COLLECT_WINDOW.start:%H:%M}-{COLLECT_WINDOW.end:%H:%M}",
+        "intervals": target_intervals(COLLECT_TARGET),
+        "apis": {
+            service: {"planned": planned.get(service, 0), **limits[service]}
+            for service in limits
+            if service in planned
+        },
+        "not_collected": [r.route_name for r in COLLECT_TARGET.route_catalog if not r.collect],
     }
 
 
@@ -170,13 +209,8 @@ def build_status_report(data_dir: Path, now: datetime, *, is_running: bool) -> d
         "running": is_running,
         "data_dir": str(data_dir),
         "jsonl_lines_today": count_lines(raw_poll_path(data_dir, today)),
-        # 지금 코드의 정식 수집 설정(배포 후 바뀌었는지 확인용).
-        "config": {
-            "window": f"{COLLECT_WINDOW.start:%H:%M}-{COLLECT_WINDOW.end:%H:%M}",
-            "intervals": target_intervals(COLLECT_TARGET),
-            "planned_daily_calls": planned_daily_calls(COLLECT_TARGET),
-            "planned_daily_max": PLANNED_DAILY_MAX,
-        },
+        # 지금 코드의 정식 수집 설정: 창, 대상별 주기, API 별 예상 호출·상한.
+        "config": config_report(),
     }
     try:
         saved = read_status_file(status_path(data_dir))
@@ -195,10 +229,12 @@ def build_status_report(data_dir: Path, now: datetime, *, is_running: bool) -> d
         "interval_sec",
         "intervals",
         "planned_daily_calls",
+        "limits",
         "updated_at",
         "last_attempt_at",
         "last_success_at",
         "apis",
+        "targets",
         "last_error",
         "jsonl_write_failures",
         "db",
@@ -246,9 +282,11 @@ class StatusStore:
             "last_attempt_at": None,
             # 날짜가 바뀌어도 마지막 성공 시각은 남겨 살아 있는지 판단에 쓴다.
             "last_success_at": (previous or {}).get("last_success_at"),
-            "daily_safe_limit_per_api": self._limits.daily_safe_limit_per_api,
+            "limits": self._limits.as_dict(),
             "route_daily_limit": self._limits.route_daily_limit,
             "apis": {},
+            # 대상(위치 노선·도착 정류장)별 오늘 호출·성공·실패·건너뜀. 키는 'location:G1300' 등.
+            "targets": {},
             "last_error": None,
             "jsonl_write_failures": 0,
             "db": {"enabled": self._db_enabled, "failures": 0},
@@ -272,9 +310,12 @@ class StatusStore:
         data = previous
         data["pid"] = os.getpid()
         data["mode"] = self._mode
-        data["daily_safe_limit_per_api"] = self._limits.daily_safe_limit_per_api
+        data.pop("daily_safe_limit_per_api", None)  # 이전 형식(모든 API 980)
+        data["limits"] = self._limits.as_dict()
         data["route_daily_limit"] = self._limits.route_daily_limit
         data.setdefault("apis", {})
+        if not isinstance(data.get("targets"), dict):
+            data["targets"] = {}
         data.setdefault("db", {"enabled": self._db_enabled, "failures": 0})
         data["db"]["enabled"] = self._db_enabled
         data.setdefault("jsonl_write_failures", 0)
@@ -373,6 +414,103 @@ class StatusStore:
             counters["consecutive_failures"] += 1
             self.record_error(service, error or "알 수 없는 오류", at)
 
+    def record_quota_exceeded(self, service: str, at: datetime) -> bool:
+        """포털 하루 호출량 초과 응답을 센다. 오늘 처음이면 True(크게 기록하려고)."""
+        counters = self.api(service)
+        counters["quota_exceeded"] = int(counters["quota_exceeded"]) + 1
+        if counters["quota_exceeded_at"] is None:
+            counters["quota_exceeded_at"] = _iso(at)
+            return True
+        return False
+
+    # -- 대상별 카운터 ------------------------------------------------------------
+    def target(self, key: str, interval_sec: int) -> dict[str, Any]:
+        targets = self.data.setdefault("targets", {})
+        counters = targets.setdefault(key, _empty_target_counter(interval_sec))
+        for name, value in _empty_target_counter(interval_sec).items():
+            counters.setdefault(name, value)
+        counters["interval_sec"] = interval_sec
+        return counters
+
+    def begin_target_call(self, key: str, interval_sec: int, at: datetime) -> None:
+        counters = self.target(key, interval_sec)
+        counters["calls"] += 1
+        counters["last_attempt_at"] = _iso(at)
+
+    def end_target_call(
+        self, key: str, interval_sec: int, *, ok: bool, at: datetime, is_empty: bool = False
+    ) -> None:
+        counters = self.target(key, interval_sec)
+        if ok:
+            counters["success"] += 1
+            counters["consecutive_failures"] = 0
+            counters["last_success_at"] = _iso(at)
+            if is_empty:
+                counters["empty"] += 1
+        else:
+            counters["failure"] += 1
+            counters["consecutive_failures"] += 1
+
+    def add_target_skipped(self, key: str, interval_sec: int, count: int) -> None:
+        self.target(key, interval_sec)["skipped_cycles"] += count
+
+    def add_target_cap_skip(self, key: str, interval_sec: int) -> None:
+        self.target(key, interval_sec)["cap_skips"] += 1
+
+    def add_target_throttle_skip(self, key: str, interval_sec: int) -> None:
+        self.target(key, interval_sec)["throttle_skips"] += 1
+
+    # -- 호출량 초과 감속 ----------------------------------------------------------
+    def take_probe(self, service: str, now: datetime, probe_interval_sec: int) -> bool:
+        """감속 중이 아니면 True.
+
+        감속 중이면 시험 호출 시각이 됐을 때만 True 이고, 그때 다음 시험 호출 시각을 잡는다.
+        """
+        counters = self.api(service)
+        if not counters["throttled"]:
+            return True
+        next_probe = counters["next_probe_at"]
+        if next_probe is not None and to_kst(now) < datetime.fromisoformat(next_probe):
+            return False
+        counters["next_probe_at"] = _iso(to_kst(now) + timedelta(seconds=probe_interval_sec))
+        return True
+
+    def record_quota_outcome(
+        self,
+        service: str,
+        *,
+        is_quota_exceeded: bool,
+        ok: bool,
+        at: datetime,
+        throttle_after: int,
+        probe_interval_sec: int,
+    ) -> str | None:
+        """호출량 초과 연속 수를 갱신한다. 감속을 시작하면 'started', 풀면 'ended'.
+
+        초과 응답은 연속 수를 올리고, 정상 응답(ok)은 0 으로 되돌리며 감속을 푼다.
+        그 밖의 실패(네트워크 오류 등)는 연속 수를 바꾸지 않는다.
+        """
+        counters = self.api(service)
+        if is_quota_exceeded:
+            counters["quota_exceeded_consecutive"] = int(counters["quota_exceeded_consecutive"]) + 1
+            if (
+                not counters["throttled"]
+                and counters["quota_exceeded_consecutive"] >= throttle_after
+            ):
+                counters["throttled"] = True
+                counters["throttled_at"] = _iso(at)
+                counters["next_probe_at"] = _iso(to_kst(at) + timedelta(seconds=probe_interval_sec))
+                return "started"
+            return None
+        if not ok:
+            return None
+        counters["quota_exceeded_consecutive"] = 0
+        if counters["throttled"]:
+            counters["throttled"] = False
+            counters["next_probe_at"] = None
+            return "ended"
+        return None
+
     def record_error(self, source: str, message: str, at: datetime) -> None:
         self.data["last_error"] = {
             "at": _iso(at),
@@ -405,5 +543,15 @@ class StatusStore:
 
     # -- 쓰기 ------------------------------------------------------------------
     def save(self, at: datetime) -> None:
+        self.write(self.snapshot(at))
+
+    def snapshot(self, at: datetime) -> dict[str, Any]:
+        """updated_at 을 at 으로 하고 지금 내용을 복사한다.
+
+        여러 작업자가 쓸 때는 잠금 안에서 부르고, 파일 쓰기(write)는 잠금 밖에서 한다.
+        """
         self.data["updated_at"] = _iso(at)
-        write_json_atomic(self._path, self.data, self._redactor)
+        return copy.deepcopy(self.data)
+
+    def write(self, snapshot: dict[str, Any]) -> None:
+        write_json_atomic(self._path, snapshot, self._redactor)

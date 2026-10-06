@@ -1,21 +1,66 @@
 import json
 from pathlib import Path
 
-from app.core.settings import CALL_LIMITS, CallLimits
-from tests.collector.helpers import FakeClock, RecordingHandler, kst, make_collector
+from app.core.settings import CALL_LIMITS
+from tests.collector.helpers import (
+    MULTI_TARGET,
+    SMALL_LIMITS,
+    FakeClock,
+    RecordingHandler,
+    kst,
+    make_collector,
+)
 
 LOCATION = "buslocationservice"
 ARRIVAL = "busarrivalservice"
-SMALL_LIMITS = CallLimits(daily_limit_per_api=5, daily_safe_limit_per_api=3)
 
 
 def _status(data_dir: Path) -> dict:
     return json.loads((data_dir / "status.json").read_text(encoding="utf-8"))
 
 
-def test_default_limits_are_fixed() -> None:
-    assert CALL_LIMITS.daily_limit_per_api == 1000
-    assert CALL_LIMITS.daily_safe_limit_per_api == 980
+def test_default_limits_are_per_api() -> None:
+    # 사용자 결정(2026-10-06): 위치는 운영계정 10,000회, 도착은 1,000회.
+    location = CALL_LIMITS.quota_for(LOCATION)
+    assert (location.daily_limit, location.safe_limit, location.planned_max) == (
+        10_000,
+        9_800,
+        9_000,
+    )
+    arrival = CALL_LIMITS.quota_for(ARRIVAL)
+    assert (arrival.daily_limit, arrival.safe_limit, arrival.planned_max) == (1_000, 980, 950)
+    assert CALL_LIMITS.safe_limit_for("busrouteservice") == 4
+    assert CALL_LIMITS.as_dict()[LOCATION] == {
+        "daily_limit": 10_000,
+        "safe_limit": 9_800,
+        "planned_max": 9_000,
+    }
+
+
+def test_cap_stops_all_workers_of_that_api(data_dir: Path) -> None:
+    # 위치 안전 상한 3회: 05:30:00 의 G1300·1306·1100 다음부터 위치 작업자는 모두 멈추고
+    # 도착 작업자만 계속한다(도착도 3회에서 멈춘다).
+    handler = RecordingHandler()
+    clock = FakeClock(kst(2026, 10, 7, 5, 30))
+    collector = make_collector(
+        data_dir, clock, handler, target=MULTI_TARGET, limits=SMALL_LIMITS, mode="run"
+    )
+
+    def stop_after(seconds: float) -> None:
+        clock.sleep(seconds)
+        if clock.now() >= kst(2026, 10, 7, 5, 32):
+            collector.stop()
+
+    collector._sleep = stop_after  # type: ignore[method-assign]
+    collector.run()
+
+    assert handler.count("getBusLocationListv2") == 3
+    assert handler.count("getBusArrivalListv2") == 3
+    status = _status(data_dir)
+    assert status["apis"][LOCATION]["capped"] is True
+    assert status["apis"][ARRIVAL]["capped"] is True
+    assert status["targets"]["location:G1300"]["cap_skips"] > 0
+    assert status["targets"]["location:1100"]["calls"] == 1
 
 
 def test_one_cycle_makes_three_calls(data_dir: Path) -> None:
