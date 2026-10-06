@@ -15,8 +15,14 @@ from typing import Any
 
 from app.collector.redact import Redactor
 from app.collector.schedule import is_holiday, is_in_window, is_weekday, to_kst
-from app.collector.storage import count_lines, raw_poll_path, write_json_atomic
-from app.core.settings import GBIS_ENDPOINTS, STATUS_FILENAME, CallLimits
+from app.collector.storage import count_lines, raw_poll_path, reference_dir, write_json_atomic
+from app.core.settings import (
+    CALL_LIMITS,
+    GBIS_ENDPOINTS,
+    REFERENCE_RECORD_SUFFIX,
+    STATUS_FILENAME,
+    CallLimits,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +121,34 @@ def recover_counts(jsonl: Path) -> RecoveredCounts:
     return recovered
 
 
+def recover_reference_counts(ref_dir: Path) -> dict[str, dict[str, int]]:
+    """기준정보 폴더의 원본 기록(discover 호출 1건당 파일 1개)을 서비스별로 센다.
+
+    읽을 수 없는 기록 파일도 호출은 일어났으므로 노선 API 실패로 센다.
+    """
+    counters: dict[str, dict[str, int]] = {}
+    if not ref_dir.exists():
+        return counters
+    for path in sorted(ref_dir.glob(f"*{REFERENCE_RECORD_SUFFIX}")):
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+            service = _SERVICE_BY_API.get(str(record["api"]), str(record["api"]))
+            is_ok = record.get("ok") is True
+        except (OSError, ValueError, KeyError, TypeError):
+            service, is_ok = CALL_LIMITS.route_service, False
+        counts = counters.setdefault(
+            service, {"calls": 0, "success": 0, "failure": 0, "consecutive_failures": 0}
+        )
+        counts["calls"] += 1
+        if is_ok:
+            counts["success"] += 1
+            counts["consecutive_failures"] = 0
+        else:
+            counts["failure"] += 1
+            counts["consecutive_failures"] += 1
+    return counters
+
+
 def build_status_report(data_dir: Path, now: datetime, *, is_running: bool) -> dict[str, Any]:
     """status 명령의 한 줄 JSON 내용.
 
@@ -198,6 +232,7 @@ class StatusStore:
             # 날짜가 바뀌어도 마지막 성공 시각은 남겨 살아 있는지 판단에 쓴다.
             "last_success_at": (previous or {}).get("last_success_at"),
             "daily_safe_limit_per_api": self._limits.daily_safe_limit_per_api,
+            "route_daily_limit": self._limits.route_daily_limit,
             "apis": {},
             "last_error": None,
             "jsonl_write_failures": 0,
@@ -223,6 +258,7 @@ class StatusStore:
         data["pid"] = os.getpid()
         data["mode"] = self._mode
         data["daily_safe_limit_per_api"] = self._limits.daily_safe_limit_per_api
+        data["route_daily_limit"] = self._limits.route_daily_limit
         data.setdefault("apis", {})
         data.setdefault("db", {"enabled": self._db_enabled, "failures": 0})
         data["db"]["enabled"] = self._db_enabled
@@ -230,15 +266,17 @@ class StatusStore:
         return data
 
     def _recover_from_jsonl(self, data: dict[str, Any], today: date) -> None:
-        """오늘 JSONL 이 있으면 API 별 호출·성공·실패 수를 다시 센다.
+        """오늘 JSONL·기준정보 원본이 있으면 API 별 호출·성공·실패 수를 다시 센다.
 
-        JSONL 에 줄이 없는 호출(호출 중 예외)은 세지 못하므로
+        파일에 남지 않은 호출(호출 중 예외)은 세지 못하므로
         실제보다 조금 적을 수 있다.
         """
-        jsonl = raw_poll_path(self._path.parent, today)
-        if not jsonl.exists():
-            return
-        recovered = recover_counts(jsonl)
+        data_dir = self._path.parent
+        jsonl = raw_poll_path(data_dir, today)
+        recovered = recover_counts(jsonl) if jsonl.exists() else RecoveredCounts()
+        # 노선 API(discover) 호출은 JSONL 이 아니라 기준정보 폴더에 남는다.
+        for service, counts in recover_reference_counts(reference_dir(data_dir, today)).items():
+            recovered.counters[service] = counts
         if not recovered.counters:
             return
         for service, counts in recovered.counters.items():
@@ -250,8 +288,8 @@ class StatusStore:
             _normalize_iso(recovered.last_success_at) or data["last_success_at"]
         )
         logger.warning(
-            "status_recovered_from_jsonl path=%s calls=%s unreadable_lines=%d",
-            jsonl,
+            "status_recovered_from_files path=%s calls=%s unreadable_lines=%d",
+            data_dir,
             {s: c["calls"] for s, c in recovered.counters.items()},
             recovered.unreadable_lines,
         )
@@ -273,8 +311,14 @@ class StatusStore:
     def calls(self, service: str) -> int:
         return int(self.api(service)["calls"])
 
+    def limit_for(self, service: str) -> int:
+        return self._limits.safe_limit_for(service)
+
+    def remaining(self, service: str) -> int:
+        return max(0, self.limit_for(service) - self.calls(service))
+
     def can_call(self, service: str) -> bool:
-        return self.calls(service) < self._limits.daily_safe_limit_per_api
+        return self.calls(service) < self.limit_for(service)
 
     def mark_capped(self, service: str, at: datetime) -> bool:
         """처음 상한에 닿았을 때만 True(로그를 한 번만 남기려고)."""
@@ -285,16 +329,30 @@ class StatusStore:
         counters["capped_at"] = _iso(at)
         return True
 
-    def begin_call(self, service: str, at: datetime) -> None:
-        self.api(service)["calls"] += 1
-        self.data["last_attempt_at"] = _iso(at)
+    def begin_call(self, service: str, at: datetime, *, touch_liveness: bool = True) -> None:
+        """호출 수를 늘린다.
 
-    def end_call(self, service: str, *, ok: bool, error: str | None, at: datetime) -> None:
+        touch_liveness=False 면 수집 생존 표시(last_attempt_at)를 건드리지 않는다(discover 용).
+        """
+        self.api(service)["calls"] += 1
+        if touch_liveness:
+            self.data["last_attempt_at"] = _iso(at)
+
+    def end_call(
+        self,
+        service: str,
+        *,
+        ok: bool,
+        error: str | None,
+        at: datetime,
+        touch_liveness: bool = True,
+    ) -> None:
         counters = self.api(service)
         if ok:
             counters["success"] += 1
             counters["consecutive_failures"] = 0
-            self.data["last_success_at"] = _iso(at)
+            if touch_liveness:
+                self.data["last_success_at"] = _iso(at)
         else:
             counters["failure"] += 1
             counters["consecutive_failures"] += 1

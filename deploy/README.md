@@ -7,7 +7,17 @@
 
 > **먼저 확인**: `backend/app/core/settings.py` 의 `COLLECT_TARGET` 에 routeId·stationId 가 채워져 있고 커밋되어 있어야 한다.
 > 비어 있으면 `once`·`run` 은 아무것도 호출하지 않고 "설정에 없다"고 출력한 뒤 끝난다.
-> 채우는 방법: 내 PC 의 `backend` 폴더에서 `uv run python -m app.collector discover` 를 실행하고 출력 근거를 보고 채운다.
+> 채우는 방법: `backend` 폴더에서 `uv run python -m app.collector discover` 를 **하루 1번만** 실행하고, 출력 근거와 `targets.json` 을 보고 채운다(아래 '기준정보 찾기' 참고).
+
+### 기준정보 찾기 (`discover`)
+
+- 노선 API(버스노선 v2)는 사용자 규칙에 따라 **하루 4회 이하**로만 부른다. `discover` 1번 = 노선 2개 × (노선 검색 1 + 정류장 목록 1) = 4회다. 그래서 **discover 는 하루에 1번만** 실행한다.
+- 노선 상세 API 는 부르지 않는다. 방향(잠실행)은 정류장 목록의 순번과 회차 표시(turnYn)로 판단한다.
+- 노선 검색 결과가 여럿이면 추가 호출 없이 검색 결과만으로 고른다: 번호가 정확히 같고, 지역에 '양주'가 있거나 기점·종점에 '잠실'이 있는 것. 하나로 못 고르면 정류장 목록을 부르지 않고 후보를 모두 출력한 뒤 종료 코드 2 로 멈춘다.
+- 오늘 노선 API 를 이미 썼으면(상태 파일 `status.json` 의 `busrouteservice` 호출 수) 남은 횟수가 4회 미만일 때 **아무것도 호출하지 않고** 멈춘다. 호출 수는 KST 0시에 다시 센다.
+- 결과는 `<데이터폴더>/reference/<날짜>/` 에 저장된다. 노선 API 응답 원본 기록(`*.record.json`, 서비스 키 가림)과, 고른 결과 요약 `targets.json` 이다. `targets.json` 에는 노선별 routeId, 덕현초교 stationId·stationSeq·다음 정류장, 하차 정류장 stationId·stationSeq 가 들어 있다. DB 의 기준정보 테이블은 다음 단계에서 이 파일로 채운다.
+- 같은 서비스 키로 PC 와 서버에서 각각 discover 를 돌리면 상태 파일이 달라 서로의 호출 수를 모른다. **한 곳에서 한 번만** 실행한다.
+- 수집기(`run`)가 돌고 있으면 잠금 때문에 실행되지 않는다(종료 코드 3). 서비스를 시작하기 전에 실행한다.
 
 ---
 
@@ -326,14 +336,14 @@ powercfg /change hibernate-timeout-ac 0
 
 | 명령 | 하는 일 |
 |---|---|
-| `uv run python -m app.collector discover` | 노선·정류장 ID 후보와 근거 출력(파일 저장 없음) |
+| `uv run python -m app.collector discover` | 노선·정류장 ID 를 찾아 근거 출력, `reference/<날짜>/` 에 원본 기록과 `targets.json` 저장. 노선 API 하루 4회 이하라 **하루 1번만** 실행 |
 | `uv run python -m app.collector once` | 지금 1회 수집하고 요약 출력 |
 | `uv run python -m app.collector run` | 평일 05~10시 1분마다 수집(계속 실행) |
 | `uv run python -m app.collector run --exit-after-window` | 그날 창이 끝나면 종료(작업 스케줄러용) |
 | `uv run python -m app.collector status` | 오늘 상태 한 줄 JSON |
 | `uv run python -m app.collector save-fixture` | 실제 응답을 `backend/tests/fixtures/gbis/` 에 저장(키 제거) |
 
-종료 코드: 0 정상, 1 호출 실패 있음, 2 설정 누락(서비스 키·routeId·stationId), 3 이미 실행 중.
+종료 코드: 0 정상, 1 호출 실패 있음, 2 설정 누락(서비스 키·routeId·stationId) 또는 discover 가 후보를 못 골랐거나 노선 API 하루 상한으로 멈춤, 3 이미 실행 중.
 
 ---
 
@@ -368,9 +378,12 @@ poll_failed api=getBusLocationListv2 ... error=게이트웨이 오류: SERVICE_K
 **서비스가 계속 재시작된다**
 `journalctl -u yangju-collector -n 100 --no-pager` 로 원인을 본다. `config_missing ids=...` 이면 settings.py 의 routeId·stationId 가 비어 있는 코드로 배포된 것이다.
 
-**`status_unreadable` / `status_recovered_from_jsonl`**
-상태 파일이 깨졌거나 없어져서, 오늘 JSONL 에서 API 별 호출 수를 다시 셌다는 뜻이다. 수집은 계속된다.
-JSONL 에 남지 않은 호출(호출 중 예외)은 세지 못하므로 실제보다 조금 적을 수 있다.
+**`status_unreadable` / `status_recovered_from_files`**
+상태 파일이 깨졌거나 없어져서, 오늘 JSONL(위치·도착)과 `reference/<날짜>/` 의 원본 기록(노선)에서 API 별 호출 수를 다시 셌다는 뜻이다. 수집은 계속된다.
+파일에 남지 않은 호출(호출 중 예외)은 세지 못하므로 실제보다 조금 적을 수 있다.
+
+**discover 가 "노선 API 오늘 남은 호출 …회 < 필요 4회" 를 출력하고 멈춘다**
+오늘 이미 discover 를 실행했다. 하루 4회 규칙 때문에 다시 호출하지 않는다. 이미 저장된 `reference/<날짜>/targets.json` 을 본다.
 
 ---
 

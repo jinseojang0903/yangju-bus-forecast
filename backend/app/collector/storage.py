@@ -17,7 +17,7 @@ from typing import Any
 from app.collector.gbis import CallResult
 from app.collector.redact import Redactor
 from app.collector.schedule import is_holiday, is_weekday, to_kst
-from app.core.settings import RAW_POLL_FILENAME
+from app.core.settings import RAW_POLL_FILENAME, REFERENCE_DIRNAME
 
 # 윈도우에서는 다른 프로세스(status 명령 등)가 파일을 읽는 순간
 # 교체가 거부될 수 있어 몇 번 다시 시도한다.
@@ -27,6 +27,10 @@ _REPLACE_RETRY_DELAY_SEC = 0.05
 
 def raw_poll_path(data_dir: Path, day: date) -> Path:
     return data_dir / day.isoformat() / RAW_POLL_FILENAME
+
+
+def reference_dir(data_dir: Path, day: date) -> Path:
+    return data_dir / REFERENCE_DIRNAME / day.isoformat()
 
 
 def build_record(*, collected_at: datetime, result: CallResult, mode: str) -> dict[str, Any]:

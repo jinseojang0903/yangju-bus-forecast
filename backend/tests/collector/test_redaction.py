@@ -16,9 +16,15 @@ from app.collector.discover import discover
 from app.collector.fixtures import save_fixture
 from app.collector.logging_setup import quiet_http_loggers
 from app.collector.redact import MASK, RedactingFilter, Redactor
-from app.collector.storage import raw_poll_path
+from app.collector.status import StatusStore, status_path
+from app.collector.storage import raw_poll_path, reference_dir
 from app.collector.summary import summarize
-from app.core.settings import GBIS_BUS_LOCATION
+from app.core.settings import (
+    CALL_LIMITS,
+    GBIS_BUS_LOCATION,
+    REFERENCE_RECORD_SUFFIX,
+    TARGETS_FILENAME,
+)
 from tests.collector.helpers import (
     FAKE_KEY,
     FAKE_KEY_ENCODED,
@@ -164,6 +170,7 @@ def _echoing_handler(request: httpx.Request) -> httpx.Response:
         "routeName": "G1300",
         "regionName": FAKE_KEY,
         "startStationName": str(request.url),
+        "endStationName": "잠실",  # discover 가 이 후보를 고르게 한다
         "stationId": "1",
         "stationName": f"덕현초교 {FAKE_KEY_ENCODED}",
         "stationSeq": 1,
@@ -183,15 +190,26 @@ def _echoing_handler(request: httpx.Request) -> httpx.Response:
 
 
 @KEY_INPUTS
-def test_screen_output_of_discover_and_summary_is_redacted(key_input: str) -> None:
+def test_discover_screen_reference_files_and_summary_have_no_key(
+    key_input: str, data_dir: Path
+) -> None:
     settings = make_settings(key_input)
     redactor = Redactor(settings.secret_values())
     client = make_client(_echoing_handler, settings, redactor)
+    clock = FakeClock(kst(2026, 10, 7, 4, 30))
+    status = StatusStore(
+        status_path(data_dir), redactor, CALL_LIMITS, today=clock.now().date(), mode="discover"
+    )
 
     lines: list[str] = []
-    discover(client, lines.append, TEST_TARGET)
+    discover(client, status, data_dir, clock, lines.append, TEST_TARGET)
     assert any("덕현초교" in line for line in lines)
     assert_no_key("\n".join(lines))
+    # 기준정보(원본 기록·targets.json)와 상태 파일에도 키가 없다.
+    ref = reference_dir(data_dir, clock.now().date())
+    assert (ref / TARGETS_FILENAME).exists()
+    assert list(ref.glob(f"*{REFERENCE_RECORD_SUFFIX}"))
+    assert_no_key(read_all_text(data_dir))
 
     result = client.call(GBIS_BUS_LOCATION, {"routeId": "1"})
     summary = "\n".join(summarize(result, "G1300", redactor))

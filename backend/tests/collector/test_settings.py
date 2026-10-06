@@ -41,6 +41,7 @@ def test_fixed_constants() -> None:
     assert [r.route_name for r in COLLECT_TARGET.routes] == ["G1300", "1306"]
     assert [r.alight_station_name for r in COLLECT_TARGET.routes] == ["잠실광역환승센터", "잠실역"]
     assert COLLECT_TARGET.board_station_name == "덕현초교"
+    assert COLLECT_TARGET.region_keyword == "양주"
     assert COLLECT_TARGET.walk_minutes_allowed == 0
     assert COLLECT_TARGET.transfers_allowed == 0
     assert FORECAST_RULES.lead_times_min == (5, 10, 15)

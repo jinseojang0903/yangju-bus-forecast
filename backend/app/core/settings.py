@@ -30,6 +30,11 @@ RAW_POLL_FILENAME: Final = "raw_poll.jsonl"
 STATUS_FILENAME: Final = "status.json"
 LOCK_FILENAME: Final = "collector.lock"
 LOG_FILENAME: Final = "collector.log"
+# 기준정보(discover): <데이터폴더>/reference/<YYYY-MM-DD>/ 에 노선 API 원본 기록과 targets.json.
+# DB 의 route·station·route_station 은 다음 단계에서 이 파일로 채운다.
+REFERENCE_DIRNAME: Final = "reference"
+REFERENCE_RECORD_SUFFIX: Final = ".record.json"
+TARGETS_FILENAME: Final = "targets.json"
 LOG_MAX_BYTES: Final = 5 * 1024 * 1024
 LOG_BACKUP_COUNT: Final = 10
 
@@ -77,18 +82,28 @@ class CollectTarget:
     board_station_id: str | None = None
     walk_minutes_allowed: int = 0
     transfers_allowed: int = 0
+    # discover 가 노선 검색 결과 여럿 중 하나를 고를 때 지역 필드에서 찾는 말.
+    # 기점·종점 쪽은 destination_name('잠실')으로 찾는다.
+    region_keyword: str = "양주"
 
 
 COLLECT_TARGET: Final = CollectTarget(
     board_station_name="덕현초교",
     direction_label="잠실행",
     destination_name="잠실",
+    # 2026-10-06 discover 결과(노선 API, data/collected/reference/2026-10-06/targets.json).
+    # 하차 정류장 ID(F04 에서 사용): G1300 잠실광역환승센터 123000611(순번 30, 회차 지점),
+    # 1306 잠실역.잠실대교남단(중) 123000002(순번 26, 회차 지점). 1306 의 '잠실역' 123000511 은
+    # 회차 뒤(순번 29, 돌아오는 방향)라 잠실행 하차로 쓰지 않는다.
     routes=(
-        # route_id: discover 결과를 메인이 채운다.
-        TargetRoute(route_name="G1300", alight_station_name="잠실광역환승센터", route_id=None),
-        TargetRoute(route_name="1306", alight_station_name="잠실역", route_id=None),
+        TargetRoute(
+            route_name="G1300", alight_station_name="잠실광역환승센터", route_id="235000092"
+        ),
+        TargetRoute(route_name="1306", alight_station_name="잠실역", route_id="235000123"),
     ),
-    board_station_id=None,  # discover 결과를 메인이 채운다.
+    # 덕현초교.덕고개 잠실행(mobileNo 39624). G1300 순번 13, 1306 순번 11. 두 노선이 같은 ID 를
+    # 쓰므로 도착 API 는 1곳만 부른다. 반대 방향은 235000409(mobileNo 39625, 회차 뒤).
+    board_station_id="235000392",
     # 허용 보행시간 0분·환승 없음: 사용자 결정(2026-10-06), CLAUDE.md 표 밖의 값.
     walk_minutes_allowed=0,
     transfers_allowed=0,
@@ -128,6 +143,7 @@ GBIS_ROUTE_LIST: Final = GbisEndpoint(
     url=f"{GBIS_BASE_URL}/busrouteservice/v2/getBusRouteListv2",
     list_key="busRouteList",
 )
+# 노선 상세. 하루 4회 규칙 때문에 discover 에서는 부르지 않는다(경로 기록용으로만 둔다).
 GBIS_ROUTE_INFO: Final = GbisEndpoint(
     api="getBusRouteInfoItemv2",
     service="busrouteservice",
@@ -161,6 +177,15 @@ GBIS_HTTP_TIMEOUT_SEC: Final = 10.0
 class CallLimits:
     daily_limit_per_api: int = 1000  # 개발계정 한도
     daily_safe_limit_per_api: int = 980  # 여기에 닿으면 그 API 호출을 멈춘다
+    # 노선 API 는 기준정보(routeId·stationId·정류장 순서)를 찾을 때만 하루 4회 이하로 쓴다.
+    # 사용자 규칙(2026-10-06). discover 1회 = 노선 2개 × (검색 1 + 정류장 목록 1) = 4회.
+    route_daily_limit: int = 4
+    route_service: str = GBIS_ROUTE_LIST.service
+
+    def safe_limit_for(self, service: str) -> int:
+        if service == self.route_service:
+            return self.route_daily_limit
+        return self.daily_safe_limit_per_api
 
 
 CALL_LIMITS: Final = CallLimits()

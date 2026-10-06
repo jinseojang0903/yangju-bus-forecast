@@ -1,6 +1,7 @@
 """수집기 명령. 실행: cd backend && uv run python -m app.collector <명령>
 
-    discover      노선·정류장 ID 후보와 근거를 화면에 출력(파일에 쓰지 않음)
+    discover      노선·정류장 ID 를 찾아 근거를 출력하고 기준정보 파일로 저장
+                  (노선 API 하루 4회 이하. 하루 1번만 실행)
     once          지금 대상 전체를 1회 수집해 JSONL 에 저장하고 요약 출력
     run           평일 05:00~10:00(KST) 분 경계마다 수집
                   --exit-after-window: 그날 창이 끝나면 종료
@@ -8,8 +9,8 @@
     save-fixture  실제 응답(위치·도착) 1건씩을 tests/fixtures/gbis/ 에 저장
                   (서비스 키 제거)
 
-종료 코드: 0 정상, 1 호출 실패 있음, 2 설정 누락(서비스 키·routeId·stationId),
-3 이미 실행 중.
+종료 코드: 0 정상, 1 호출 실패 있음, 2 설정 누락(서비스 키·routeId·stationId)
+또는 discover 가 후보를 못 골랐거나 노선 API 하루 상한으로 멈춤, 3 이미 실행 중.
 """
 
 import argparse
@@ -29,7 +30,7 @@ from app.collector.collector import (
     plan_calls,
 )
 from app.collector.db import build_raw_poll_sink
-from app.collector.discover import discover
+from app.collector.discover import MODE_DISCOVER, discover
 from app.collector.fixtures import save_fixture
 from app.collector.gbis import GbisClient
 from app.collector.lock import AlreadyRunningError, collector_lock, is_collector_running
@@ -93,11 +94,22 @@ def _new_client(settings: Settings, redactor: Redactor) -> GbisClient:
 def cmd_discover(settings: Settings, redactor: Redactor) -> int:
     if not _require_service_key(settings):
         return EXIT_CONFIG_MISSING
-    client = _new_client(settings, redactor)
-    try:
-        return discover(client, print)
-    finally:
-        client.close()
+    data_dir = settings.data_dir
+    clock = SystemClock()
+    # 노선 API 하루 호출 수를 상태 파일에 세므로, 다른 수집기와 동시에 돌지 않게 잠근다.
+    with collector_lock(data_dir):
+        status = StatusStore(
+            status_path(data_dir),
+            redactor,
+            CALL_LIMITS,
+            today=clock.now().date(),
+            mode=MODE_DISCOVER,
+        )
+        client = _new_client(settings, redactor)
+        try:
+            return discover(client, status, data_dir, clock, print)
+        finally:
+            client.close()
 
 
 def cmd_once(settings: Settings, redactor: Redactor) -> int:
@@ -249,7 +261,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="python -m app.collector", description="GBIS 실시간 수집기"
     )
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("discover", help="노선·정류장 ID 찾기(화면 출력만)")
+    sub.add_parser("discover", help="노선·정류장 ID 찾기와 기준정보 저장(노선 API 하루 4회)")
     sub.add_parser("once", help="대상 전체 1회 수집")
     run = sub.add_parser("run", help="수집 창 안에서 1분마다 수집")
     run.add_argument("--exit-after-window", action="store_true", help="그날 수집 창이 끝나면 종료")
