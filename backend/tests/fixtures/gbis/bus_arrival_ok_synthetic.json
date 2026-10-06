@@ -1,0 +1,35 @@
+{
+  "response": {
+    "msgHeader": {
+      "queryTime": "2026-10-07 06:30:00.321",
+      "resultCode": 0,
+      "resultMessage": "정상적으로 처리되었습니다."
+    },
+    "msgBody": {
+      "busArrivalList": [
+        {
+          "flag": "PASS",
+          "locationNo1": 3,
+          "locationNo2": 9,
+          "plateNo1": "경기70아0001",
+          "plateNo2": "경기70아0004",
+          "predictTime1": 6,
+          "predictTime2": 18,
+          "predictTimeSec1": 362,
+          "predictTimeSec2": 1075,
+          "remainSeatCnt1": 7,
+          "remainSeatCnt2": 30,
+          "routeDestId": 900000200,
+          "routeDestName": "잠실광역환승센터",
+          "routeId": 900000001,
+          "routeName": "G1300",
+          "routeTypeCd": 14,
+          "staOrder": 15,
+          "stationId": 900000105,
+          "vehId1": 900000901,
+          "vehId2": 900000904
+        }
+      ]
+    }
+  }
+}

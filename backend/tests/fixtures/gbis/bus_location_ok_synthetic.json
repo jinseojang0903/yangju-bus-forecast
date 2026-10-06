@@ -1,0 +1,51 @@
+{
+  "response": {
+    "comMsgHeader": {
+      "responseMsgID": null,
+      "responseTime": null,
+      "requestMsgID": null,
+      "returnCode": null,
+      "errMsg": null,
+      "successYN": null
+    },
+    "msgHeader": {
+      "queryTime": "2026-10-07 06:30:00.123",
+      "resultCode": 0,
+      "resultMessage": "정상적으로 처리되었습니다."
+    },
+    "msgBody": {
+      "busLocationList": [
+        {
+          "crowded": 2,
+          "endBus": 0,
+          "lowPlate": 0,
+          "plateNo": "경기70아0001",
+          "plateType": 3,
+          "remainSeatCnt": 7,
+          "routeId": 900000001,
+          "routeTypeCd": 14,
+          "stateCd": 2,
+          "stationId": 900000101,
+          "stationSeq": 12,
+          "taglessCd": 1,
+          "vehId": 900000901
+        },
+        {
+          "crowded": 4,
+          "endBus": 0,
+          "lowPlate": 0,
+          "plateNo": "경기70아0002",
+          "plateType": 3,
+          "remainSeatCnt": 0,
+          "routeId": 900000001,
+          "routeTypeCd": 14,
+          "stateCd": 1,
+          "stationId": 900000102,
+          "stationSeq": 20,
+          "taglessCd": 1,
+          "vehId": 900000902
+        }
+      ]
+    }
+  }
+}

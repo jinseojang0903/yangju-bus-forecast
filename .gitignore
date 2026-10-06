@@ -1,0 +1,36 @@
+# 비밀키
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# 원천·수집 데이터 (GBIS 수집 원본 JSONL, 수집기 상태·로그)
+data/raw/
+data/collected/
+data/logs/
+backup/
+
+# 노트북 체크포인트
+.ipynb_checkpoints/
+
+# OS·에디터
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Claude Code 로컬 설정·작업 흐름 상태(workflow.js)
+.claude/settings.local.json
+.claude/state/

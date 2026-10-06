@@ -1,0 +1,24 @@
+[Unit]
+Description=Yangju GBIS collector (weekday 05:00-10:00 KST, every minute)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/Yangju/backend
+ExecStart=/home/ubuntu/.local/bin/uv run --frozen python -m app.collector run
+Restart=always
+RestartSec=10
+# Python 출력을 바로 journal 로 보낸다.
+Environment=PYTHONUNBUFFERED=1
+# SIGTERM 을 받으면 진행 중인 호출(최대 10초)을 마치고 끝낸다.
+TimeoutStopSec=30
+# 최소 권한. 새 파일은 소유자만 읽는다(.env·원본·상태 파일).
+NoNewPrivileges=yes
+PrivateTmp=yes
+UMask=0077
+# ProtectSystem=strict 는 uv 캐시·.venv 쓰기를 막을 수 있어 아직 넣지 않는다(README '나중에 할 일').
+
+[Install]
+WantedBy=multi-user.target

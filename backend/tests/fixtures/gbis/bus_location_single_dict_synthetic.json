@@ -1,0 +1,21 @@
+{
+  "response": {
+    "msgHeader": {
+      "queryTime": "2026-10-07 05:01:00.456",
+      "resultCode": "0",
+      "resultMessage": "정상적으로 처리되었습니다."
+    },
+    "msgBody": {
+      "busLocationList": {
+        "endBus": 0,
+        "plateNo": "경기70아0003",
+        "remainSeatCnt": 41,
+        "routeId": 900000001,
+        "stateCd": 2,
+        "stationId": 900000100,
+        "stationSeq": 1,
+        "vehId": 900000903
+      }
+    }
+  }
+}
