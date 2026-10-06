@@ -3,10 +3,11 @@
     discover      노선·정류장 ID 를 찾아 근거를 출력하고 기준정보 파일로 저장
                   (노선 API 하루 4회 이하. 하루 1번만 실행)
     once          지금 대상 전체를 1회 수집해 JSONL 에 저장하고 요약 출력
-    run           평일 05:00~10:00(KST) 분 경계마다 수집
+    run           평일 05:30~10:15(KST) 대상별 주기로 수집(G1300 30초, 1306·도착 60초)
                   --exit-after-window: 그날 창이 끝나면 종료
                   --trial-until HH:MM: 시운전(창 무시, 그 시각 전까지, mode=trial)
-                  --interval-sec N: 시운전 전용 간격(20~60초, 86400 의 약수)
+                  --interval-sec N: 시운전 전용 간격(10~60초, 86400 의 약수)
+                  --only-route NAME, --skip-arrival: 시운전 전용 대상 줄이기
     status        오늘 상태를 한 줄 JSON 으로 출력
     save-fixture  실제 응답(위치·도착) 1건씩을 tests/fixtures/gbis/ 에 저장
                   (서비스 키 제거)
@@ -23,6 +24,7 @@ import re
 import signal
 import sys
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import datetime, time
 from types import FrameType
 
@@ -33,6 +35,7 @@ from app.collector.collector import (
     Collector,
     missing_target_ids,
     plan_calls,
+    plan_problems,
 )
 from app.collector.db import build_raw_poll_sink
 from app.collector.discover import MODE_DISCOVER, discover
@@ -47,12 +50,12 @@ from app.collector.summary import summarize
 from app.core.settings import (
     CALL_LIMITS,
     COLLECT_TARGET,
-    COLLECT_WINDOW,
     ENV_FILE,
     GBIS_BUS_ARRIVAL,
     GBIS_BUS_LOCATION,
     GBIS_FIXTURE_DIR,
     KST,
+    CollectTarget,
     Settings,
     get_settings,
 )
@@ -176,6 +179,28 @@ def resolve_trial_until(text: str, now: datetime) -> datetime:
     return until
 
 
+def trial_target(only_routes: Sequence[str] | None, skip_arrival: bool) -> CollectTarget:
+    """시운전 대상. 옵션이 없으면 COLLECT_TARGET 그 자체를 돌려준다.
+
+    only_routes 는 COLLECT_TARGET 의 노선 이름만 받는다. 모르는 이름이면 ValueError.
+    skip_arrival 이면 board_station_id 를 비워 도착 API 를 부르지 않게 한다.
+    """
+    if not only_routes and not skip_arrival:
+        return COLLECT_TARGET
+    routes = COLLECT_TARGET.routes
+    if only_routes:
+        known = {r.route_name for r in COLLECT_TARGET.routes}
+        unknown = [name for name in only_routes if name not in known]
+        if unknown:
+            raise ValueError(f"모르는 노선 {unknown} (허용: {sorted(known)})")
+        routes = tuple(r for r in COLLECT_TARGET.routes if r.route_name in set(only_routes))
+    return replace(
+        COLLECT_TARGET,
+        routes=routes,
+        board_station_id=None if skip_arrival else COLLECT_TARGET.board_station_id,
+    )
+
+
 def cmd_run(
     settings: Settings,
     redactor: Redactor,
@@ -183,16 +208,29 @@ def cmd_run(
     exit_after_window: bool,
     trial_until: str | None = None,
     interval_sec: int | None = None,
+    only_routes: Sequence[str] | None = None,
+    skip_arrival: bool = False,
     clock: Clock | None = None,
 ) -> int:
     """정식 수집(run) 또는 시운전(--trial-until).
 
-    시운전은 수집 창을 무시하고 오늘 trial_until 미만의 분 경계마다 같은 대상을 호출한다.
+    시운전은 수집 창을 무시하고 오늘 trial_until 미만의 주기 경계마다 대상을 호출한다.
     기록의 mode 는 "trial" 이며 평가·사례에서 뺀다.
     한도·잠금·키 가림·JSONL 먼저 쓰기는 정식 수집과 같은 경로를 쓴다.
     잘못된 시각(형식 오류·이미 지남)이면 호출 없이 2 를 돌려준다.
-    interval_sec 는 시운전에서만 받는다(20~60초, 86400 의 약수). 아니면 2.
+    interval_sec·only_routes·skip_arrival 는 시운전에서만 받는다. 아니면 2.
+    interval_sec 는 10~60초이고 86400 의 약수, only_routes 는 settings 의 노선 이름만.
     """
+    try:
+        target = trial_target(only_routes, skip_arrival)
+    except ValueError as exc:
+        logger.error("trial_target_rejected reason=%s", exc)
+        print(f"대상 선택 옵션: {exc}")
+        return EXIT_CONFIG_MISSING
+    if target is not COLLECT_TARGET and trial_until is None:
+        logger.error("trial_target_rejected reason=trial_only")
+        print("--only-route·--skip-arrival 는 --trial-until 과 함께일 때만 쓸 수 있다")
+        return EXIT_CONFIG_MISSING
     if interval_sec is not None:
         if trial_until is None:
             logger.error("interval_sec_rejected reason=trial_only value=%s", interval_sec)
@@ -215,6 +253,15 @@ def cmd_run(
             return EXIT_CONFIG_MISSING
     if _report_missing_ids():
         return EXIT_CONFIG_MISSING
+    if until is None:
+        # 정식 수집: 주기 범위와 API 별 하루 예상 호출 수를 시작 전에 점검한다.
+        # 예상 호출 수가 PLANNED_DAILY_MAX(950)를 넘으면 시작하지 않는다.
+        problems = plan_problems(COLLECT_TARGET)
+        if problems:
+            for problem in problems:
+                logger.error("collect_plan_rejected reason=%s", problem)
+                print(f"수집 설정 거부: {problem}")
+            return EXIT_CONFIG_MISSING
     if not _require_service_key(settings):
         return EXIT_CONFIG_MISSING
     data_dir = settings.data_dir
@@ -228,8 +275,9 @@ def cmd_run(
                 clock=clock,
                 redactor=redactor,
                 mode=MODE_RUN if until is None else MODE_TRIAL,
+                target=target,
                 db_sink=db_sink,
-                interval_sec=interval_sec or COLLECT_WINDOW.interval_sec,
+                interval_sec=interval_sec,
             )
 
             def _stop(signum: int, _frame: FrameType | None) -> None:
@@ -340,7 +388,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--interval-sec",
         type=int,
         metavar="N",
-        help="시운전 전용 수집 간격(20~60초, 86400 의 약수). 기본 60",
+        help="시운전 전용 수집 간격(10~60초, 86400 의 약수). 기본 60",
+    )
+    run.add_argument(
+        "--only-route",
+        action="append",
+        metavar="NAME",
+        help="시운전 전용: 이 노선만 위치 수집(여러 번 쓸 수 있음. 예: G1300)",
+    )
+    run.add_argument(
+        "--skip-arrival", action="store_true", help="시운전 전용: 도착 API 를 부르지 않음"
     )
     sub.add_parser("status", help="오늘 상태를 한 줄 JSON 으로 출력")
     sub.add_parser("save-fixture", help="실제 응답을 테스트 픽스처로 저장")
@@ -371,6 +428,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 exit_after_window=args.exit_after_window,
                 trial_until=args.trial_until,
                 interval_sec=args.interval_sec,
+                only_routes=args.only_route,
+                skip_arrival=args.skip_arrival,
             )
         if args.command == "save-fixture":
             return cmd_save_fixture(settings, redactor)

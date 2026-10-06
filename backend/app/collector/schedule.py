@@ -98,7 +98,10 @@ def _check_interval(interval_sec: int) -> None:
 
 
 def validate_trial_interval(interval_sec: int) -> None:
-    """시운전 간격: 정수 20~60초이고 86400 의 약수. 아니면 ValueError."""
+    """수집 간격(시운전 --interval-sec, 대상별 정식 주기 공통): 10~60초, 86400 의 약수.
+
+    아니면 ValueError.
+    """
     if not TRIAL_INTERVAL_MIN_SEC <= interval_sec <= TRIAL_INTERVAL_MAX_SEC:
         raise ValueError(f"간격은 {TRIAL_INTERVAL_MIN_SEC}~{TRIAL_INTERVAL_MAX_SEC}초여야 한다")
     if SECONDS_PER_DAY % interval_sec != 0:
@@ -122,6 +125,11 @@ def floor_to_interval(
     local = to_kst(moment)
     steps = math.floor(_offset_sec(local) / interval_sec)
     return _day_start(local) + timedelta(seconds=steps * interval_sec)
+
+
+def is_on_boundary(moment: datetime, interval_sec: int) -> bool:
+    """moment 가 KST 자정 기준 interval_sec 배수 경계 위에 있으면 True."""
+    return floor_to_interval(moment, interval_sec) == to_kst(moment)
 
 
 def ceil_to_interval(moment: datetime, interval_sec: int = COLLECT_WINDOW.interval_sec) -> datetime:

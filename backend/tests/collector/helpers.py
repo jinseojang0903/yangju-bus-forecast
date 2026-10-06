@@ -40,6 +40,25 @@ TEST_TARGET = CollectTarget(
     ),
     board_station_id="900000105",
 )
+# 정식 설정과 같은 주기(G1300 30초, 1306·도착 60초)의 테스트 대상.
+MIXED_TARGET = CollectTarget(
+    board_station_name="덕현초교",
+    direction_label="잠실행",
+    destination_name="잠실",
+    routes=(
+        TargetRoute(
+            route_name="G1300",
+            alight_station_name="잠실광역환승센터",
+            route_id="900000001",
+            interval_sec=30,
+        ),
+        TargetRoute(
+            route_name="1306", alight_station_name="잠실역", route_id="900000002", interval_sec=60
+        ),
+    ),
+    board_station_id="900000105",
+    arrival_interval_sec=60,
+)
 
 Handler = Callable[[httpx.Request], httpx.Response]
 
@@ -89,6 +108,9 @@ class RecordingHandler:
     def count(self, api: str) -> int:
         return sum(1 for r in self.requests if r.url.path.endswith(api))
 
+    def count_route(self, route_id: str) -> int:
+        return sum(1 for r in self.requests if r.url.params.get("routeId") == route_id)
+
 
 def make_settings(key: str = FAKE_KEY, **overrides: str) -> Settings:
     # backend/.env 를 읽지 않는다.
@@ -110,7 +132,8 @@ def make_collector(
     mode: str = "run",
     sleep: Callable[[float], object] | None = None,
     db_sink: RawPollSink | None = None,
-    interval_sec: int = 60,
+    interval_sec: int | None = None,
+    target: CollectTarget = TEST_TARGET,
 ) -> Collector:
     settings = make_settings(key)
     redactor = Redactor(settings.secret_values())
@@ -120,7 +143,7 @@ def make_collector(
         clock=clock,
         redactor=redactor,
         mode=mode,
-        target=TEST_TARGET,
+        target=target,
         limits=limits,
         db_sink=db_sink,
         sleep=sleep or clock.sleep,

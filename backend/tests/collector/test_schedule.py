@@ -8,6 +8,7 @@ from app.collector.schedule import (
     floor_to_interval,
     is_holiday,
     is_in_window,
+    is_on_boundary,
     is_today_window_over,
     is_weekday,
     next_tick,
@@ -23,12 +24,13 @@ from tests.collector.helpers import kst
 @pytest.mark.parametrize(
     ("moment", "expected"),
     [
-        (kst(2026, 10, 7, 4, 59), False),
-        (kst(2026, 10, 7, 4, 59, 59), False),
-        (kst(2026, 10, 7, 5, 0), True),
-        (kst(2026, 10, 7, 9, 59), True),
-        (kst(2026, 10, 7, 9, 59, 59), True),
-        (kst(2026, 10, 7, 10, 0), False),
+        (kst(2026, 10, 7, 5, 0), False),
+        (kst(2026, 10, 7, 5, 29, 59), False),
+        (kst(2026, 10, 7, 5, 30), True),
+        (kst(2026, 10, 7, 10, 0), True),
+        (kst(2026, 10, 7, 10, 14, 30), True),
+        (kst(2026, 10, 7, 10, 14, 59), True),
+        (kst(2026, 10, 7, 10, 15), False),
         (kst(2026, 10, 10, 6, 0), False),  # 토
         (kst(2026, 10, 11, 6, 0), False),  # 일
         (kst(2026, 10, 9, 6, 0), True),  # 평일 공휴일은 수집하고 표시만 한다
@@ -39,9 +41,9 @@ def test_collect_window(moment: datetime, expected: bool) -> None:
 
 
 def test_window_uses_kst_regardless_of_input_timezone() -> None:
-    # UTC 2026-10-06 20:00 = KST 2026-10-07 05:00
-    assert is_in_window(datetime(2026, 10, 6, 20, 0, tzinfo=UTC)) is True
-    assert is_in_window(datetime(2026, 10, 6, 19, 59, tzinfo=UTC)) is False
+    # UTC 2026-10-06 20:30 = KST 2026-10-07 05:30
+    assert is_in_window(datetime(2026, 10, 6, 20, 30, tzinfo=UTC)) is True
+    assert is_in_window(datetime(2026, 10, 6, 20, 29, tzinfo=UTC)) is False
 
 
 def test_naive_datetime_is_rejected() -> None:
@@ -94,16 +96,17 @@ def test_record_marks_holiday_and_weekday() -> None:
 
 
 def test_next_window_start() -> None:
-    assert next_window_start(kst(2026, 10, 7, 4, 0)) == kst(2026, 10, 7, 5, 0)
+    assert next_window_start(kst(2026, 10, 7, 4, 0)) == kst(2026, 10, 7, 5, 30)
     assert next_window_start(kst(2026, 10, 7, 6, 30)) == kst(2026, 10, 7, 6, 30)
-    assert next_window_start(kst(2026, 10, 7, 10, 0)) == kst(2026, 10, 8, 5, 0)
-    # 금 10:00 이후 → 월 05:00
-    assert next_window_start(kst(2026, 10, 9, 10, 0)) == kst(2026, 10, 12, 5, 0)
+    assert next_window_start(kst(2026, 10, 7, 10, 15)) == kst(2026, 10, 8, 5, 30)
+    # 금 10:15 이후 → 월 05:30
+    assert next_window_start(kst(2026, 10, 9, 10, 15)) == kst(2026, 10, 12, 5, 30)
 
 
 def test_today_window_over() -> None:
-    assert is_today_window_over(kst(2026, 10, 7, 4, 55)) is False
-    assert is_today_window_over(kst(2026, 10, 7, 10, 0)) is True
+    assert is_today_window_over(kst(2026, 10, 7, 5, 25)) is False
+    assert is_today_window_over(kst(2026, 10, 7, 10, 0)) is False
+    assert is_today_window_over(kst(2026, 10, 7, 10, 15)) is True
     assert is_today_window_over(kst(2026, 10, 10, 4, 55)) is True
 
 
@@ -136,12 +139,18 @@ def test_40_second_boundaries_are_multiples_from_kst_midnight() -> None:
     assert next_tick(late, kst(2026, 10, 6, 10, 20, 40), 40) == kst(2026, 10, 6, 10, 21, 20)
 
 
-@pytest.mark.parametrize("value", [20, 30, 40, 45, 48, 60])
+def test_is_on_boundary() -> None:
+    assert is_on_boundary(kst(2026, 10, 7, 5, 30), 60) is True
+    assert is_on_boundary(kst(2026, 10, 7, 5, 30, 30), 60) is False
+    assert is_on_boundary(kst(2026, 10, 7, 5, 30, 30), 30) is True
+
+
+@pytest.mark.parametrize("value", [10, 15, 20, 30, 40, 45, 48, 60])
 def test_trial_interval_accepts_divisors_in_range(value: int) -> None:
     validate_trial_interval(value)
 
 
-@pytest.mark.parametrize("value", [19, 35, 61, 0, -40, 120])
+@pytest.mark.parametrize("value", [9, 19, 35, 61, 0, -40, 120])
 def test_trial_interval_rejects_out_of_range_or_non_divisor(value: int) -> None:
     with pytest.raises(ValueError):
         validate_trial_interval(value)

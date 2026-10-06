@@ -18,10 +18,15 @@ from app.collector.schedule import is_holiday, is_in_window, is_weekday, to_kst
 from app.collector.storage import count_lines, raw_poll_path, reference_dir, write_json_atomic
 from app.core.settings import (
     CALL_LIMITS,
+    COLLECT_TARGET,
+    COLLECT_WINDOW,
     GBIS_ENDPOINTS,
+    PLANNED_DAILY_MAX,
     REFERENCE_RECORD_SUFFIX,
     STATUS_FILENAME,
     CallLimits,
+    planned_daily_calls,
+    target_intervals,
 )
 
 logger = logging.getLogger(__name__)
@@ -165,6 +170,13 @@ def build_status_report(data_dir: Path, now: datetime, *, is_running: bool) -> d
         "running": is_running,
         "data_dir": str(data_dir),
         "jsonl_lines_today": count_lines(raw_poll_path(data_dir, today)),
+        # 지금 코드의 정식 수집 설정(배포 후 바뀌었는지 확인용).
+        "config": {
+            "window": f"{COLLECT_WINDOW.start:%H:%M}-{COLLECT_WINDOW.end:%H:%M}",
+            "intervals": target_intervals(COLLECT_TARGET),
+            "planned_daily_calls": planned_daily_calls(COLLECT_TARGET),
+            "planned_daily_max": PLANNED_DAILY_MAX,
+        },
     }
     try:
         saved = read_status_file(status_path(data_dir))
@@ -181,6 +193,8 @@ def build_status_report(data_dir: Path, now: datetime, *, is_running: bool) -> d
         "mode",
         "in_window",
         "interval_sec",
+        "intervals",
+        "planned_daily_calls",
         "updated_at",
         "last_attempt_at",
         "last_success_at",
@@ -377,8 +391,17 @@ class StatusStore:
     def set_in_window(self, in_window: bool) -> None:
         self.data["in_window"] = in_window
 
-    def set_interval(self, interval_sec: int) -> None:
+    def set_plan(
+        self,
+        *,
+        interval_sec: int,
+        intervals: dict[str, int],
+        planned_daily_calls: dict[str, int] | None,
+    ) -> None:
+        """기본 tick(interval_sec), 대상별 주기, 오늘 예상 호출 수(정식 수집만)."""
         self.data["interval_sec"] = interval_sec
+        self.data["intervals"] = intervals
+        self.data["planned_daily_calls"] = planned_daily_calls
 
     # -- 쓰기 ------------------------------------------------------------------
     def save(self, at: datetime) -> None:

@@ -5,6 +5,7 @@
   다른 곳에 숫자를 다시 쓰지 않는다. 값을 바꿔야 할 것 같으면 고치지 말고 메인에 보고한다.
 """
 
+import math
 from dataclasses import dataclass
 from datetime import time
 from functools import lru_cache
@@ -47,11 +48,16 @@ KST: Final = ZoneInfo(TIMEZONE_NAME)
 
 @dataclass(frozen=True)
 class CollectWindow:
-    """평일(월~금) start 이상 end 미만(KST)에 interval_sec 마다 호출한다."""
+    """평일(월~금) start 이상 end 미만(KST)에 호출한다.
+
+    대상별 주기는 TargetRoute.interval_sec·CollectTarget.arrival_interval_sec 에 있다.
+    interval_sec 는 주기를 따로 정하지 않은 곳(시운전 기본값, 기본 인자)의 기본 간격이다.
+    """
 
     weekdays: tuple[int, ...] = (0, 1, 2, 3, 4)  # datetime.weekday(): 월=0 … 금=4
-    start: time = time(5, 0)
-    end: time = time(10, 0)
+    # 05:30 이상 10:15 미만: 사용자 결정(2026-10-06), 2026-10-07 부터. (이전 05:00~10:00)
+    start: time = time(5, 30)
+    end: time = time(10, 15)
     interval_sec: int = 60
 
 
@@ -59,10 +65,13 @@ COLLECT_WINDOW: Final = CollectWindow()
 # 잠에서 경계보다 늦게 깨어났을 때 그 경계의 호출로 인정하는 여유(초).
 # 운영값이며 규칙 값이 아니다.
 TICK_GRACE_SEC: Final = 5.0
-# 시운전(run --trial-until)에서만 바꿔 볼 수 있는 간격 범위(초). 86400 의 약수여야 한다.
-# 정식 수집 간격은 COLLECT_WINDOW.interval_sec(60초)이며 바꾸지 않는다.
-TRIAL_INTERVAL_MIN_SEC: Final = 20
+# 수집 주기로 쓸 수 있는 범위(초). 시운전 --interval-sec 와 대상별 주기 모두 이 범위이고
+# 86400 의 약수여야 한다(KST 자정 기준 경계가 매일 같게).
+TRIAL_INTERVAL_MIN_SEC: Final = 10
 TRIAL_INTERVAL_MAX_SEC: Final = 60
+# 정식 수집의 API 별 하루 예상 호출 수 상한: 사용자 결정(2026-10-06).
+# 창 길이와 주기로 계산한 값이 이를 넘으면 run 이 시작하지 않는다(안전 상한 980 과 별개).
+PLANNED_DAILY_MAX: Final = 950
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +83,8 @@ class TargetRoute:
     alight_station_name: str
     # discover 결과를 메인이 채운다. None 이면 once/run 은 호출하지 않고 끝낸다.
     route_id: str | None = None
+    # 위치 API 호출 주기(초).
+    interval_sec: int = 60
 
 
 @dataclass(frozen=True)
@@ -84,6 +95,8 @@ class CollectTarget:
     routes: tuple[TargetRoute, ...]
     # 덕현초교(잠실행) stationId. discover 결과를 메인이 채운다.
     board_station_id: str | None = None
+    # 도착 API 호출 주기(초).
+    arrival_interval_sec: int = 60
     walk_minutes_allowed: int = 0
     transfers_allowed: int = 0
     # discover 가 노선 검색 결과 여럿 중 하나를 고를 때 지역 필드에서 찾는 말.
@@ -101,13 +114,22 @@ COLLECT_TARGET: Final = CollectTarget(
     # 회차 뒤(순번 29, 돌아오는 방향)라 잠실행 하차로 쓰지 않는다.
     routes=(
         TargetRoute(
-            route_name="G1300", alight_station_name="잠실광역환승센터", route_id="235000092"
+            route_name="G1300",
+            alight_station_name="잠실광역환승센터",
+            route_id="235000092",
+            interval_sec=30,  # 사용자 결정(2026-10-06): G1300 위치 30초
         ),
-        TargetRoute(route_name="1306", alight_station_name="잠실역", route_id="235000123"),
+        TargetRoute(
+            route_name="1306",
+            alight_station_name="잠실역",
+            route_id="235000123",
+            interval_sec=60,  # 사용자 결정(2026-10-06): 1306 위치 60초
+        ),
     ),
     # 덕현초교.덕고개 잠실행(mobileNo 39624). G1300 순번 13, 1306 순번 11. 두 노선이 같은 ID 를
     # 쓰므로 도착 API 는 1곳만 부른다. 반대 방향은 235000409(mobileNo 39625, 회차 뒤).
     board_station_id="235000392",
+    arrival_interval_sec=60,  # 사용자 결정(2026-10-06): 도착(덕현초교) 60초
     # 허용 보행시간 0분·환승 없음: 사용자 결정(2026-10-06), CLAUDE.md 표 밖의 값.
     walk_minutes_allowed=0,
     transfers_allowed=0,
@@ -193,6 +215,48 @@ class CallLimits:
 
 
 CALL_LIMITS: Final = CallLimits()
+
+
+def _seconds_of_day(moment: time) -> int:
+    return moment.hour * 3600 + moment.minute * 60 + moment.second
+
+
+def _boundaries_in_window(interval_sec: int, window: CollectWindow) -> int:
+    """창 [start, end) 안에 있는 KST 자정 기준 interval_sec 배수 경계의 수."""
+    start, end = _seconds_of_day(window.start), _seconds_of_day(window.end)
+    return math.ceil(end / interval_sec) - math.ceil(start / interval_sec)
+
+
+def target_intervals(target: CollectTarget = COLLECT_TARGET) -> dict[str, int]:
+    """대상별 정식 주기(초). 키는 'location:<노선>', 'arrival:<정류장>'."""
+    intervals = {f"location:{r.route_name}": r.interval_sec for r in target.routes}
+    intervals[f"arrival:{target.board_station_name}"] = target.arrival_interval_sec
+    return intervals
+
+
+def planned_daily_calls(
+    target: CollectTarget = COLLECT_TARGET, window: CollectWindow = COLLECT_WINDOW
+) -> dict[str, int]:
+    """정식 수집의 API(서비스)별 하루 예상 호출 수.
+
+    지금 설정(05:30~10:15, G1300 30초·1306 60초·도착 60초)이면
+    buslocationservice 570+285=855, busarrivalservice 285.
+    ID 가 없는 대상은 호출하지 않으므로 세지 않는다.
+    """
+    planned: dict[str, int] = {}
+    for route in target.routes:
+        if route.route_id:
+            service = GBIS_BUS_LOCATION.service
+            planned[service] = planned.get(service, 0) + _boundaries_in_window(
+                route.interval_sec, window
+            )
+    if target.board_station_id:
+        service = GBIS_BUS_ARRIVAL.service
+        planned[service] = planned.get(service, 0) + _boundaries_in_window(
+            target.arrival_interval_sec, window
+        )
+    return planned
+
 
 # DB(raw_poll) 저장. 테이블 SQL 이 아직 없어 끈다.
 # TODO(backend-dev/2026-10-06): raw_poll 테이블 SQL(backend/migrations)과

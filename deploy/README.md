@@ -1,6 +1,14 @@
 # GBIS 수집기 배포 안내 (서버: Ubuntu, 내 PC: Windows PowerShell)
 
-수집기는 평일 05:00~10:00(KST)에 1분마다 GBIS를 호출해 `data/collected/<날짜>/raw_poll.jsonl` 에 원본을 저장한다.
+수집기는 평일 **05:30 이상 10:15 미만**(KST)에 GBIS 를 호출해 `data/collected/<날짜>/raw_poll.jsonl` 에 원본을 저장한다(2026-10-07 부터).
+
+| 대상 | 주기 | 하루 호출 |
+|---|---|---|
+| 위치 API G1300 | 30초 | 570 |
+| 위치 API 1306 | 60초 | 285 |
+| 도착 API 덕현초교(잠실행) | 60초 | 285 |
+
+API 별 하루 호출은 위치 855회, 도착 285회다. 사용자 기준 상한은 API 별 950회이고, 설정을 바꿔 이를 넘으면 `run` 이 시작하지 않는다(종료 코드 2). 그와 별도로 실제 호출 수가 980회에 닿으면 그날 그 API 호출을 멈춘다.
 이 문서의 명령은 **윈도우 PowerShell 에서 복사해 붙여 넣는** 순서로 썼다.
 `<서버IP>`, `<키파일경로>` 처럼 꺾쇠로 표시한 부분은 자기 값으로 바꾼다(꺾쇠도 지운다).
 `"<키파일경로>"` 처럼 따옴표 안에 있는 값은 **따옴표는 남긴다**. 경로에 공백(예: `바탕 화면`)이 있어도 동작한다.
@@ -23,7 +31,7 @@
 
 ## 0. 가장 중요한 경고: 한 곳에서만 돌린다
 
-같은 서비스 키로 **서버와 PC 에서 동시에** 수집기를 돌리면 위치 API 호출이 하루 600 × 2 = **1,200회**가 되어
+같은 서비스 키로 **서버와 PC 에서 동시에** 수집기를 돌리면 위치 API 호출이 하루 855 × 2 = **1,710회**가 되어
 한도(1,000회)를 넘는다. 한도를 넘으면 그날 남은 시간의 데이터는 다시 얻을 수 없다.
 서버로 옮기면 PC 의 작업 스케줄러를 끄고(10장 마지막 참고), PC 로 돌릴 때는 서버 서비스를 멈춘다.
 
@@ -185,6 +193,64 @@ sudo systemctl restart yangju-collector
 
 ---
 
+## 7-1. 서버에 새 코드 반영하기
+
+코드(예: 수집 창·주기 변경)를 커밋한 뒤 서버에 반영한다. 데이터(`data/`)와 `.env` 는 그대로 남는다.
+수집 창 안(평일 05:30~10:15)에 재시작하면 재시작하는 몇 초 동안 호출이 빠지므로, 가능하면 창 밖에서 한다.
+
+### (가) git 방식 (3장 (가)로 받은 경우)
+
+서버에서:
+
+```bash
+cd ~/Yangju && git pull
+cd ~/Yangju/backend && ~/.local/bin/uv sync --frozen
+sudo systemctl restart yangju-collector
+```
+
+### (나) zip 방식 (3장 (나)로 받은 경우)
+
+PC 의 PowerShell 에서 새 zip 을 만들어 보낸다(**커밋된 내용만** 담긴다):
+
+```powershell
+cd "D:\OneDrive - YoungLimWonSoftLab\바탕 화면\Yangju"
+git archive --format=zip -o yangju.zip HEAD
+scp -i "<키파일경로>" yangju.zip ubuntu@<서버IP>:~/
+```
+
+서버에서 덮어써 풀고 재시작한다(`-o` 는 묻지 않고 덮어쓰기. `data/`·`backend/.env` 는 zip 에 없으므로 그대로 남는다):
+
+```bash
+unzip -o ~/yangju.zip -d ~/Yangju
+cd ~/Yangju/backend && ~/.local/bin/uv sync --frozen
+sudo systemctl restart yangju-collector
+```
+
+### 반영 확인
+
+서비스가 다시 떴는지:
+
+```bash
+systemctl status yangju-collector --no-pager
+journalctl -u yangju-collector -n 20 --no-pager
+```
+
+새 설정이 들어갔는지(한 줄 JSON 의 `config`):
+
+```bash
+cd ~/Yangju/backend && ~/.local/bin/uv run --frozen python -m app.collector status
+```
+
+`config` 에 아래처럼 나오면 된다.
+
+```
+"config":{"window":"05:30-10:15","intervals":{"location:G1300":30,"location:1306":60,"arrival:덕현초교":60},"planned_daily_calls":{"buslocationservice":855,"busarrivalservice":285},"planned_daily_max":950}
+```
+
+수집 창 안에서 한 번 이상 돈 뒤에는 실행 중인 프로세스가 남긴 `interval_sec`(기본 tick, 30)와 `intervals`·`planned_daily_calls` 도 같은 값인지 본다.
+
+---
+
 ## 8. 잘 돌고 있는지 확인하기
 
 서비스 상태(`active (running)` 이면 정상):
@@ -205,7 +271,7 @@ journalctl -u yangju-collector -n 50 --no-pager
 cd ~/Yangju/backend && ~/.local/bin/uv run --frozen python -m app.collector status
 ```
 
-오늘 저장된 줄 수(창 안에서는 1분에 3줄씩 늘어난다. 하루 끝나면 900줄 근처):
+오늘 저장된 줄 수(창 안에서는 1분에 4줄씩 늘어난다: G1300 2줄, 1306 1줄, 도착 1줄. 하루 끝나면 1,140줄 근처):
 
 ```bash
 wc -l ~/Yangju/data/collected/$(TZ=Asia/Seoul date +%F)/raw_poll.jsonl
@@ -265,13 +331,13 @@ uv run python -m app.collector run --exit-after-window
 ```
 
 `--exit-after-window` 의 동작:
-- 평일 05:00 전에 실행하면 05:00 까지 기다렸다가 수집을 시작하고, 10:00 이 되면 스스로 종료한다.
-- 평일 05:00~10:00 사이에 실행하면 바로 다음 분부터 수집하고, 10:00 에 종료한다.
-- 주말이거나 평일 10:00 이후에 실행하면 아무것도 호출하지 않고 바로 종료한다.
+- 평일 05:30 전에 실행하면 05:30 까지 기다렸다가 수집을 시작하고, 10:15 가 되면 스스로 종료한다(마지막 호출은 10:14:30 G1300).
+- 평일 05:30~10:15 사이에 실행하면 바로 다음 30초 경계부터 수집하고, 10:15 에 종료한다.
+- 주말이거나 평일 10:15 이후에 실행하면 아무것도 호출하지 않고 바로 종료한다.
 
 멈추려면 `Ctrl+C` 를 누른다.
 
-### 작업 스케줄러에 등록 (평일 04:55 자동 실행)
+### 작업 스케줄러에 등록 (평일 05:25 자동 실행)
 
 PowerShell 을 **관리자 권한**으로 열고 실행한다.
 
@@ -279,7 +345,7 @@ PowerShell 을 **관리자 권한**으로 열고 실행한다.
 $backend = "D:\OneDrive - YoungLimWonSoftLab\바탕 화면\Yangju\backend"
 $uv = (Get-Command uv).Source
 $action = New-ScheduledTaskAction -Execute $uv -Argument "run python -m app.collector run --exit-after-window" -WorkingDirectory $backend
-$trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday,Tuesday,Wednesday,Thursday,Friday -At "04:55"
+$trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday,Tuesday,Wednesday,Thursday,Friday -At "05:25"
 $taskSettings = New-ScheduledTaskSettingsSet -WakeToRun -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 6) -MultipleInstances IgnoreNew
 Register-ScheduledTask -TaskName "YangjuCollector" -Action $action -Trigger $trigger -Settings $taskSettings -Description "GBIS 수집기 (평일 05-10시)"
 ```
@@ -287,7 +353,12 @@ Register-ScheduledTask -TaskName "YangjuCollector" -Action $action -Trigger $tri
 옵션 설명:
 - `-WakeToRun`: 절전 상태면 깨워서 실행한다.
 - `-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries`: 기본값은 "전원이 연결되어 있을 때만 시작, 배터리로 바뀌면 중지"다. 노트북이 배터리로 바뀌어도 수집이 멈추지 않게 이 두 옵션을 넣었다. 전원 연결 시에만 돌리고 싶으면 두 옵션을 지운다.
-- `-StartWhenAvailable`: 04:55 에 PC 가 꺼져 있었다면 켜진 뒤 바로 실행한다(10시 이후면 바로 끝난다).
+- `-StartWhenAvailable`: 05:25 에 PC 가 꺼져 있었다면 켜진 뒤 바로 실행한다(10:15 이후면 바로 끝난다).
+- 이미 04:55 로 등록해 두었다면 아래로 시각만 바꾼다.
+
+```powershell
+Set-ScheduledTask -TaskName "YangjuCollector" -Trigger (New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday,Tuesday,Wednesday,Thursday,Friday -At "05:25")
+```
 - 기본 설정은 "사용자가 로그온한 경우에만 실행"이다. 화면 잠금 상태는 괜찮지만 로그아웃하면 실행되지 않는다.
 
 시험 실행과 확인:
@@ -338,9 +409,9 @@ powercfg /change hibernate-timeout-ac 0
 |---|---|
 | `uv run python -m app.collector discover` | 노선·정류장 ID 를 찾아 근거 출력, `reference/<날짜>/` 에 원본 기록과 `targets.json` 저장. 노선 API 하루 4회 이하라 **하루 1번만** 실행 |
 | `uv run python -m app.collector once` | 지금 1회 수집하고 요약 출력 |
-| `uv run python -m app.collector run` | 평일 05~10시 1분마다 수집(계속 실행) |
+| `uv run python -m app.collector run` | 평일 05:30~10:15 대상별 주기로 수집(G1300 30초, 1306·도착 60초. 계속 실행). 하루 예상 호출이 API 별 950회를 넘는 설정이면 시작하지 않음(종료 코드 2) |
 | `uv run python -m app.collector run --exit-after-window` | 그날 창이 끝나면 종료(작업 스케줄러용) |
-| `uv run python -m app.collector run --trial-until HH:MM [--interval-sec N]` | 시운전. 수집 창·요일을 무시하고 오늘 그 시각(KST) **전**까지 N초(기본 60)마다 수집한 뒤 종료(예: `--trial-until 11:30` 이면 11:29 호출이 마지막). 경계는 KST 자정 기준 N초의 배수다(40초면 10:20:00, 10:20:40, 10:21:20 …). N 은 20~60 이고 86400 의 약수여야 한다(20·30·40·45·48·60 등). `--interval-sec` 는 `--trial-until` 과 함께일 때만 쓸 수 있다. 기록은 `mode=trial`, `interval_sec=N` 으로 남아 평가에서 제외한다. 호출 수는 하루 한도에 포함된다(40초면 5시간 기준 위치 API 900회). 지난 시각·형식 오류·허용되지 않는 N 이면 종료 코드 2 |
+| `uv run python -m app.collector run --trial-until HH:MM [--interval-sec N] [--only-route NAME ...] [--skip-arrival]` | 시운전. `--only-route G1300` 처럼 노선을 골라 위치만 부를 수 있고(여러 번 쓸 수 있음, settings 의 노선 이름만), `--skip-arrival` 이면 도착 API 를 부르지 않는다. 두 옵션도 `--trial-until` 과 함께일 때만 쓸 수 있다(예: 갱신 간격 측정 `--trial-until 10:50 --interval-sec 10 --only-route G1300 --skip-arrival`). 수집 창·요일을 무시하고 오늘 그 시각(KST) **전**까지 N초(기본 60)마다 수집한 뒤 종료(예: `--trial-until 11:30` 이면 11:29 호출이 마지막). 경계는 KST 자정 기준 N초의 배수다(40초면 10:20:00, 10:20:40, 10:21:20 …). N 은 10~60 이고 86400 의 약수여야 한다(10·15·20·30·40·45·48·60 등). `--interval-sec` 는 `--trial-until` 과 함께일 때만 쓸 수 있다. 기록은 `mode=trial`, `interval_sec=N` 으로 남아 평가에서 제외한다. 호출 수는 하루 한도에 포함된다(40초면 5시간 기준 위치 API 900회). 지난 시각·형식 오류·허용되지 않는 N 이면 종료 코드 2 |
 | `uv run python -m app.collector status` | 오늘 상태 한 줄 JSON |
 | `uv run python -m app.collector save-fixture` | 실제 응답을 `backend/tests/fixtures/gbis/` 에 저장(키 제거) |
 
@@ -351,7 +422,7 @@ powercfg /change hibernate-timeout-ac 0
 ## 12. 문제 해결
 
 **아무 로그도 안 나오고 조용하다**
-수집 창 밖(주말, 평일 10:00~다음 날 05:00)이면 정상이다. 로그에 `outside_window sleep_until=...` 이 한 번 찍히고 다음 창까지 잠든다.
+수집 창 밖(주말, 평일 10:15~다음 날 05:30)이면 정상이다. 로그에 `outside_window sleep_until=...` 이 한 번 찍히고 다음 창까지 잠든다.
 `status` 의 `in_window_now` 가 `false` 인지 확인한다. 평일 공휴일(예: 2026-10-09 한글날)에도 수집하며, 기록에 `is_holiday: true` 로 표시된다.
 
 **서비스 키 오류**
@@ -374,7 +445,7 @@ poll_failed api=getBusLocationListv2 ... error=게이트웨이 오류: SERVICE_K
 그 API 의 오늘 호출 수가 안전 상한(980회)에 닿아 호출을 멈췄다. 다음 날 0시(KST)에 자동으로 다시 센다.
 
 **`cycles_skipped`**
-한 주기가 1분 넘게 걸려 다음 주기를 건너뛰었다(몰아서 호출하지 않는다). 가끔이면 괜찮고, 자주 보이면 네트워크를 확인한다.
+한 주기가 기본 간격(30초) 넘게 걸려 다음 주기를 건너뛰었다(몰아서 호출하지 않는다). 가끔이면 괜찮고, 자주 보이면 네트워크를 확인한다.
 
 **서비스가 계속 재시작된다**
 `journalctl -u yangju-collector -n 100 --no-pager` 로 원인을 본다. `config_missing ids=...` 이면 settings.py 의 routeId·stationId 가 비어 있는 코드로 배포된 것이다.
