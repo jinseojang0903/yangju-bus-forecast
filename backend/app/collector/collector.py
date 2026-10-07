@@ -56,12 +56,13 @@ from app.core.settings import (
     planned_daily_calls,
 )
 
+# 수집 mode 값은 설정 모듈에 있다(API·라벨이 수집기 모듈 없이 쓰도록). 기존 import 경로용 재수출.
+from app.core.settings import MODE_ONCE as MODE_ONCE
+from app.core.settings import MODE_RUN as MODE_RUN
+from app.core.settings import MODE_TRIAL as MODE_TRIAL
+
 logger = logging.getLogger(__name__)
 
-MODE_RUN = "run"
-MODE_ONCE = "once"
-# 시운전. 평가·사례에서 이 mode 의 기록은 뺀다.
-MODE_TRIAL = "trial"
 # 이 시간(초)마다 INFO 로 누적 호출 수를 남긴다.
 HEARTBEAT_EVERY_SEC = 1800
 # 상태 파일·JSONL 잠금을 이보다 오래 기다리면 WARNING(G1300 이 밀리는지 보려고).

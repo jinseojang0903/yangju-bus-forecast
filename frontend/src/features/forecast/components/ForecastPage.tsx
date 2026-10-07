@@ -5,6 +5,7 @@ import type { SnapshotResponse } from "../../../api/types";
 import { ErrorMessage } from "../../../components/ErrorMessage";
 import { Notice } from "../../../components/Notice";
 import { AlternativesSection } from "../../alternatives/components/AlternativesSection";
+import { RouteMapSection } from "../../routeMap/components/RouteMapSection";
 import { ServiceNotice } from "../../status/components/ServiceNotice";
 import { SnapshotStaleNotice } from "../../status/components/SnapshotStaleNotice";
 import { busKey } from "../busForecast";
@@ -65,6 +66,7 @@ function ForecastView({ request }: { request: SnapshotRequest }) {
       <ServiceNotice service={snapshot.service} />
       {snapshot.stale && <SnapshotStaleNotice dataUpdatedAt={snapshot.dataUpdatedAt} />}
       <BusList snapshot={snapshot} />
+      <RouteMapSection snapshot={snapshot} />
       <ExplanationPanel snapshotId={snapshot.snapshotId} computedAt={snapshot.computedAt} />
       {showAlternatives && <AlternativesSection snapshot={snapshot} />}
       <p className={styles.footnote}>

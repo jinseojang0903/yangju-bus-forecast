@@ -17,8 +17,14 @@ from app.core.api_logging import setup_api_logging
 from app.core.body_limit import BodySizeLimitMiddleware
 from app.core.errors import register_error_handlers
 from app.core.ratelimit import RateLimiter
-from app.core.settings import API_PREFIX, Settings, get_settings
+from app.core.settings import (
+    API_PREFIX,
+    ROUTE_POSITIONS_CACHE_TTL_SEC,
+    Settings,
+    get_settings,
+)
 from app.repositories.fake import FakeRepository
+from app.schemas.route_positions import RoutePositionsResponse
 from app.schemas.snapshot import SnapshotResponse
 from app.services.cache import TtlCache
 
@@ -69,6 +75,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.rate_limiter = RateLimiter()
     app.state.repository = FakeRepository() if settings.fake_data else None
     app.state.snapshot_cache = TtlCache[SnapshotResponse | None]()
+    app.state.route_positions_cache = TtlCache[RoutePositionsResponse | None](
+        ttl_sec=ROUTE_POSITIONS_CACHE_TTL_SEC
+    )
 
     register_error_handlers(app)
     # 나중에 더한 미들웨어가 바깥이다: CORS → 본문 크기 상한 → 라우터.

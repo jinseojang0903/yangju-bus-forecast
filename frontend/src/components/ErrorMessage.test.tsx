@@ -51,4 +51,19 @@ describe("ErrorMessage", () => {
     );
     expect(await screen.findByText("질문은 1–200자로 적어 주세요.")).toBeInTheDocument();
   });
+
+  it.each([
+    ["NOT_FOUND", 404, "이 노선은 아직 지도를 제공하지 않아요."],
+    ["VALIDATION_FAILED", 400, "노선 정보를 확인할 수 없어 지도를 그리지 못했어요."],
+  ] as const)(
+    "노선 지도의 %s 는 지도 영역 안내만 하고 조건을 다시 고르게 하지 않는다",
+    async (code, status, title) => {
+      renderWithProviders(
+        <ErrorMessage error={new ApiError({ code, status, message: "" })} context="routeMap" />,
+      );
+      expect(await screen.findByText(title)).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "조건 다시 고르기" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "다시 시도" })).toBeNull();
+    },
+  );
 });

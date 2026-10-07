@@ -39,6 +39,8 @@ BusSource = Literal["arrival_1st", "arrival_2nd", "timetable_next"]
 ArrivalEstimateSource = Literal["predict_time_sec", "predict_time_min", "timetable"]
 FallbackReason = Literal["llm_disabled", "timeout", "check_failed", "daily_limit", "error"]
 HealthStatus = Literal["ok", "degraded", "idle"]
+# 차량 상태(계약 4.8절): GBIS stateCd 1 도착, 2 출발, 0 교차로 통과, 그 밖 unknown.
+VehicleState = Literal["arrived", "departed", "passing", "unknown"]
 ErrorCode = Literal[
     "VALIDATION_FAILED", "NOT_FOUND", "METHOD_NOT_ALLOWED", "RATE_LIMITED", "INTERNAL_ERROR"
 ]

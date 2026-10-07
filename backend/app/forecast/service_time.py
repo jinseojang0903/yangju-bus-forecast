@@ -111,13 +111,31 @@ def next_refresh_at(
     state, next_start = service_state(now)
     if state != "in_service" and next_start is not None:
         return next_start
-    interval = interval_sec or shortest_collect_interval_sec()
+    return next_collect_boundary_at(
+        now,
+        data_updated_at,
+        interval_sec=interval_sec or shortest_collect_interval_sec(),
+        margin_sec=margin_sec,
+    )
+
+
+def next_collect_boundary_at(
+    now: datetime,
+    data_updated_at: datetime | None,
+    *,
+    interval_sec: int,
+    margin_sec: int = NEXT_REFRESH_MARGIN_SEC,
+) -> datetime:
+    """max(now, data_updated_at) 보다 뒤인 첫 수집 주기 경계 + margin_sec(KST).
+
+    경계는 KST 자정 기준 interval_sec 의 배수다(수집기 호출 시각과 같다).
+    """
     base = _to_kst(now)
     if data_updated_at is not None:
         base = max(base, _to_kst(data_updated_at))
     midnight = datetime.combine(base.date(), time(0, 0), tzinfo=KST)
     elapsed = (base - midnight).total_seconds()
-    next_boundary = midnight + timedelta(seconds=(int(elapsed // interval) + 1) * interval)
+    next_boundary = midnight + timedelta(seconds=(int(elapsed // interval_sec) + 1) * interval_sec)
     return next_boundary + timedelta(seconds=margin_sec)
 
 
