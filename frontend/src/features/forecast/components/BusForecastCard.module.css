@@ -1,0 +1,94 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.routeName {
+  font-size: 1.375rem;
+  font-weight: 800;
+}
+
+.arrival {
+  font-variant-numeric: tabular-nums;
+}
+
+.sourceTag {
+  padding: 0 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-small);
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.risk {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-left: 6px solid var(--color-border);
+  border-radius: var(--radius-small);
+  background: var(--color-bg);
+}
+
+.high {
+  border-left-color: var(--color-risk-high);
+}
+
+.medium {
+  border-left-color: var(--color-risk-medium);
+}
+
+.low {
+  border-left-color: var(--color-risk-low);
+}
+
+.riskHeading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.riskTerm {
+  font-size: 0.875rem;
+  color: var(--color-muted);
+}
+
+.cases {
+  font-size: 1rem;
+}
+
+.cases strong {
+  font-size: 1.125rem;
+}
+
+.meta {
+  font-size: 0.8125rem;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.seats {
+  font-size: 0.9375rem;
+}
+
+.seatsEmphasis {
+  font-size: 1.125rem;
+}
+
+.muted {
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+}

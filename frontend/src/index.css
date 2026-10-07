@@ -1,0 +1,81 @@
+/* 리셋과 색 토큰만 둔다. 화면별 스타일은 CSS Modules 로 쓴다. */
+:root {
+  --color-bg: #f4f6f8;
+  --color-surface: #ffffff;
+  --color-text: #1b1f24;
+  --color-muted: #5b6470;
+  --color-border: #d3d9e0;
+  --color-primary: #1450b8;
+  --color-primary-text: #ffffff;
+  --color-focus: #f0a400;
+
+  --color-risk-high: #a8201a;
+  --color-risk-high-bg: #fde8e6;
+  --color-risk-medium: #7a4b00;
+  --color-risk-medium-bg: #fff1d1;
+  --color-risk-low: #146c2e;
+  --color-risk-low-bg: #e2f4e7;
+
+  --color-preliminary: #4a3a99;
+  --color-preliminary-bg: #ece8fb;
+
+  --color-info-bg: #eaf1fd;
+  --color-info-border: #7aa3e8;
+  --color-warning-bg: #fff6df;
+  --color-warning-border: #d89a00;
+  --color-highlight-bg: #fde8e6;
+  --color-highlight-border: #a8201a;
+  --color-skeleton: #e3e7ec;
+
+  --radius: 12px;
+  --radius-small: 6px;
+
+  color: var(--color-text);
+  background: var(--color-bg);
+  font-family:
+    system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+h1,
+h2,
+h3,
+p,
+ul,
+ol,
+dl,
+dd {
+  margin: 0;
+}
+
+ul,
+ol {
+  padding: 0;
+  list-style: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}

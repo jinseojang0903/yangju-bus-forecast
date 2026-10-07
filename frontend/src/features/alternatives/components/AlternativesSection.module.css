@@ -1,0 +1,96 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.heading {
+  font-size: 1.125rem;
+}
+
+.deadline {
+  font-size: 0.875rem;
+  color: var(--color-muted);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.candidate {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.recommended {
+  border: 3px solid var(--color-primary);
+}
+
+.candidateTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.routeName {
+  font-size: 1.125rem;
+  font-weight: 800;
+}
+
+.recommendedBadge {
+  display: inline-flex;
+  gap: 4px;
+  padding: 1px 10px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+  font-size: 0.875rem;
+}
+
+.fact dt {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.fact dd {
+  font-variant-numeric: tabular-nums;
+}
+
+.fact:last-child {
+  grid-column: 1 / -1;
+}
+
+.missed {
+  font-weight: 700;
+}
+
+.riskLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.noProbability {
+  color: var(--color-muted);
+}
+
+.muted {
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+}
