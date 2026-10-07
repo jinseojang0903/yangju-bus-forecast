@@ -10,6 +10,7 @@ import type {
   RecommendationReason,
   RiskLevel,
   ServiceState,
+  VehicleState,
 } from "../api/types";
 
 export interface StatusText {
@@ -183,3 +184,66 @@ export const PARSE_QUERY_TEXT: Record<ParseQueryResponse["status"], string> = {
   need_more: "조건을 더 알려 주세요.",
   unavailable: "말로 묻기는 아직 준비 중이에요. 위에서 정류장과 목적지를 직접 골라 주세요.",
 };
+
+// ── 노선 지도 (계약 4.8) ──────────────────────────────────────
+export const ROUTE_MAP_HEADING = "노선 지도";
+export const ROUTE_MAP_ROUTE_PICKER_LABEL = "지도에 보일 노선";
+export const ROUTE_MAP_LOADING = "지도를 불러오는 중…";
+export const ROUTE_MAP_REFRESHING = "위치를 새로 받는 중…";
+export const ROUTE_MAP_RECENTER = "내 정류장 중심으로";
+export const ROUTE_MAP_NO_STATIONS = "이 노선의 정류장 위치 정보가 아직 없어요.";
+export const ROUTE_MAP_NO_ROUTES = "지도에 보일 노선이 없어요.";
+export const ROUTE_MAP_NO_RECORD = "수집 기록 없음";
+/** 400·404 로 지도를 받지 못한 노선 버튼에 붙인다(색만으로 구분하지 않게) */
+export const ROUTE_MAP_ROUTE_UNAVAILABLE = "지도 없음";
+
+/** "07:31:10 수집 기준" */
+export function collectedAtText(time: string): string {
+  return `${time} 수집 기준`;
+}
+
+export const ROUTE_MAP_STALE_TEXT: StatusText = {
+  title: "정보 오래됨",
+  description: "차량 위치가 늦게 들어오고 있어요. 지도는 마지막으로 받은 위치예요.",
+};
+
+export const ROUTE_MAP_OUTSIDE_COLLECTION_TEXT: StatusText = {
+  title: "지금은 수집 시간이 아니에요",
+  description: "마지막 수집 기준 위치예요. 수집은 평일 05:30–10:15에 해요.",
+};
+
+export function routeMapAriaLabel(routeName: string): string {
+  return `${routeName} 노선 지도`;
+}
+
+/** 잔여석 null 은 "정보 없음"이고 0석과 다르다(계약 4.8) */
+export function remainSeatsText(remainSeats: number | null): string {
+  return remainSeats === null ? "잔여석 정보 없음" : `잔여 ${remainSeats}석`;
+}
+
+/** 지도 툴팁의 차량 상태. GBIS stateCd 를 짧게 옮긴다 */
+export function vehicleStateText(state: VehicleState, stationName: string | null): string {
+  const place = stationName ?? "정류장";
+  switch (state) {
+    case "arrived":
+      return `${place} 도착`;
+    case "departed":
+      return `${place} 출발`;
+    case "passing":
+      // stateCd 0(교차로 통과). 정류장에 서 있지 않고 정류장 사이를 달리는 중이다
+      return "정류장 사이 이동 중";
+    case "unknown":
+      return `${place} 부근`;
+  }
+}
+
+/** "덕현초교까지 3정류장". 0 이면 내 정류장에 있는 차 */
+export function stopsToTargetText(targetName: string, stopsToTarget: number): string {
+  return stopsToTarget <= 0
+    ? `${targetName} 도착·통과 중`
+    : `${targetName}까지 ${stopsToTarget}정류장`;
+}
+
+export const APPROACHING_HEADING = "내 정류장으로 오는 차량";
+export const APPROACHING_EMPTY = "지금 내 정류장으로 오는 차량이 없어요.";
+export const MY_STATION_FALLBACK_NAME = "내 정류장";

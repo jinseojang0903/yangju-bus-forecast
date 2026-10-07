@@ -3,6 +3,8 @@ import type {
   ExplanationResponse,
   ParseQueryRequest,
   ParseQueryResponse,
+  RouteId,
+  RoutePositionsResponse,
   SnapshotId,
   SnapshotQuery,
   SnapshotResponse,
@@ -65,6 +67,18 @@ export function getExplanation(
     `/snapshot/${encodeURIComponent(snapshotId)}/explanation`,
     undefined,
     { signal },
+  );
+}
+
+/** GET /routes/{routeId}/positions (4.8). 404: 지원하지 않는 노선, 400: ID 형식 */
+export function getRoutePositions(
+  routeId: RouteId,
+  signal?: AbortSignal,
+): Promise<RoutePositionsResponse> {
+  return apiGet<RoutePositionsResponse>(
+    `/routes/${encodeURIComponent(routeId)}/positions`,
+    undefined,
+    { signal, arrayFields: ["stations", "vehicles"] },
   );
 }
 

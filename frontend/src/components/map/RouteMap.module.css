@@ -1,0 +1,113 @@
+/* Leaflet 의 층(z-index 400~1000)이 예보 화면의 붙는 머리글(z-index 1) 위로 올라오지 않도록
+   지도 전체를 하나의 쌓임 맥락에 가둔다. */
+.frame {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-skeleton);
+}
+
+.map {
+  width: 100%;
+  height: 280px;
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 280px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-skeleton);
+  color: var(--color-muted);
+  font-size: 0.875rem;
+}
+
+/* Leaflet 은 선·점의 색을 SVG 속성으로 넣는다. CSS 가 속성보다 우선하므로 여기서 색 토큰을 쓴다. */
+.outboundLine {
+  stroke: var(--color-primary);
+  stroke-width: 5px;
+  stroke-opacity: 0.85;
+  fill: none;
+}
+
+.returnLine {
+  stroke: var(--color-muted);
+  stroke-width: 3px;
+  stroke-opacity: 0.35;
+  stroke-dasharray: 6 6;
+  fill: none;
+}
+
+.stop {
+  stroke: var(--color-primary);
+  stroke-width: 2px;
+  fill: var(--color-surface);
+  fill-opacity: 1;
+}
+
+.targetStop {
+  stroke: var(--color-text);
+  stroke-width: 3px;
+  fill: var(--color-focus);
+  fill-opacity: 1;
+}
+
+.targetLabel {
+  font-weight: 700;
+  font-size: 0.8125rem;
+}
+
+/* 차량 기준점(크기 0) */
+.vehicleIcon {
+  background: none;
+  border: none;
+}
+
+/* 잔여석 표시. 색 외에 글자("3석"/"0석"/"정보 없음")와 테두리 모양으로도 구분한다 */
+.vehicle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -50%);
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 2px solid;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 30%);
+}
+
+.vehicleAvailable {
+  background: var(--color-surface);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+/* 0석: 진한 빨강 바탕 + 흰 글자 + 네모 모서리 */
+.vehicleNoSeat {
+  background: var(--color-risk-high);
+  border-color: var(--color-risk-high);
+  color: var(--color-primary-text);
+  border-radius: var(--radius-small);
+}
+
+/* 정보 없음: 회색 점선 테두리 */
+.vehicleUnknown {
+  background: var(--color-skeleton);
+  border-color: var(--color-muted);
+  border-style: dashed;
+  color: var(--color-muted);
+  font-weight: 600;
+}
+
+.vehicleDimmed {
+  opacity: 0.55;
+  box-shadow: none;
+}

@@ -1,0 +1,151 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.heading {
+  font-size: 1.125rem;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.routePicker {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.routeButton {
+  flex: 1;
+  min-height: 40px;
+  padding: 6px 12px;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-small);
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* 고른 노선: 색 반전 + 굵은 밑줄로도 구분 */
+.routeButton[aria-pressed="true"] {
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* 지도 없는 노선: 회색 점선 테두리 + '지도 없음' 글자 */
+.routeButton[aria-disabled="true"] {
+  border-color: var(--color-muted);
+  border-style: dashed;
+  background: var(--color-skeleton);
+  color: var(--color-muted);
+  text-decoration: none;
+  cursor: not-allowed;
+}
+
+.routeUnavailable {
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.collected {
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.refreshing {
+  color: var(--color-muted);
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  padding: 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-muted);
+  text-align: center;
+}
+
+.recenter {
+  align-self: flex-end;
+  min-height: 36px;
+  padding: 4px 12px;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-small);
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.approaching {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.subheading {
+  font-size: 1rem;
+}
+
+.vehicleList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.vehicleItem {
+  font-size: 0.9375rem;
+}
+
+.empty {
+  color: var(--color-muted);
+  font-size: 0.9375rem;
+}
+
+.seats {
+  font-weight: 600;
+}
+
+.seatsAvailable {
+  color: var(--color-primary);
+}
+
+.seatsNoSeat {
+  color: var(--color-risk-high);
+  font-weight: 800;
+}
+
+.seatsUnknown {
+  color: var(--color-muted);
+  font-weight: 400;
+  font-style: italic;
+}

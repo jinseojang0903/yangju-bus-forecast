@@ -221,3 +221,46 @@ export interface ParseQueryResponse {
   };
   message: string;
 }
+
+// ── 4.8 GET /routes/{routeId}/positions ───────────────────────
+/** GBIS stateCd 1 도착, 2 출발, 0 교차로 통과, 그 밖 unknown */
+export type VehicleState = "arrived" | "departed" | "passing" | "unknown";
+
+export interface RoutePositionsStation {
+  stationSeq: number;
+  stationId: StationId;
+  name: string;
+  /** WGS84 위도(GBIS y) */
+  lat: number;
+  /** WGS84 경도(GBIS x) */
+  lng: number;
+  /** 잠실행 구간(stationSeq ≤ 회차 순번)이면 true, 회차 뒤 귀로면 false */
+  isOutbound: boolean;
+  isTarget: boolean;
+}
+
+export interface RoutePositionsVehicle {
+  vehicleId: VehicleId;
+  plateNo: string | null;
+  stationSeq: number;
+  stationId: StationId;
+  state: VehicleState;
+  /** null 은 '정보 없음'(GBIS -1·빈값·음수). 0석과 다르다 */
+  remainSeats: number | null;
+  /** 잠실행 구간에서 내 정류장 앞에 있을 때만 값이 있다 */
+  stopsToTarget: number | null;
+}
+
+export interface RoutePositionsResponse {
+  routeId: RouteId;
+  routeName: string;
+  targetStationId: StationId;
+  computedAt: Timestamp;
+  dataUpdatedAt: Timestamp | null;
+  stale: boolean;
+  inCollectionWindow: boolean;
+  nextRefreshAt: Timestamp;
+  /** stationSeq 오름차순 */
+  stations: RoutePositionsStation[];
+  vehicles: RoutePositionsVehicle[];
+}

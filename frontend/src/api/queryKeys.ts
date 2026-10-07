@@ -1,5 +1,5 @@
 import type { SnapshotRequest } from "./endpoints";
-import type { SnapshotId, StationId } from "./types";
+import type { RouteId, SnapshotId, StationId } from "./types";
 
 export const queryKeys = {
   stations: () => ["stations"] as const,
@@ -13,4 +13,5 @@ export const queryKeys = {
       request.scenario ?? null,
     ] as const,
   explanation: (snapshotId: SnapshotId) => ["explanation", snapshotId] as const,
+  routePositions: (routeId: RouteId) => ["routes", routeId, "positions"] as const,
 };
