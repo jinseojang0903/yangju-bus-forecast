@@ -115,6 +115,7 @@ type RiskLevel = "high" | "medium" | "low";     // high: p ≥ 0.7, low: p < 0.3
 | `GET /api/v1/snapshot` | 현재 버스·0석 위험·대안을 같은 계산 시점으로 한 번에 | 예보, 대안, 근거 부족 | 이번 |
 | `GET /api/v1/snapshot/{snapshotId}/explanation` | LLM 설명 또는 고정 문구 | 예보 | 이번(고정 문구) |
 | `POST /api/v1/parse-query` | 자연어 질문 → 조회 조건 | 조건 입력 | 이번(unavailable) |
+| `GET /api/v1/routes/{routeId}/positions` | 노선 정류장 좌표와 최신 수집 차량 위치·잔여석(F02 지도) | 예보(지도) | 이번 |
 | `GET /api/v1/notices` | 승인된 운행 공지(F09) | 예보 | **추후 추가** |
 | `GET /api/v1/reports/no-seat` | 30분대별 무좌석 도착 현황(F10) | 리포트 | **추후 추가** |
 | `GET /api/v1/reports/validation` | 선행시간별 검증 지표(F10) | 리포트 | **추후 추가** |
@@ -316,6 +317,54 @@ interface Alternatives {
 ```
 에러: 400(빈 문자열·200자 초과), 429
 
+### 4.8 GET /api/v1/routes/{routeId}/positions
+F02 '현재 버스 정보'를 지도로 보여 주기 위한 응답이다. 노선의 정류장 좌표(기준정보)와 **가장 최근에 수집한** 그 노선의 차량 위치·잔여석을 준다. GBIS 를 호출하지 않고 수집 기록만 읽는다. 과거 시각을 지정하는 파라미터는 없다(2.2절).
+
+- 지원 노선: 정류장 좌표 기준정보가 있는 노선. 지금은 G1300(`235000092`), 1306(`235000123`). 그 밖은 404.
+- 캐시: 10초(1.3절과 같은 값). 호출 제한: '나머지 GET'(분당 60회).
+- 프론트는 `nextRefreshAt` 에 맞춰 다시 조회한다(최소 10초).
+
+```ts
+{
+  routeId: RouteId;
+  routeName: string;                 // "G1300"
+  targetStationId: StationId;        // 강조할 내 정류장. 지금은 덕현초교 잠실행 "235000392"
+  computedAt: Timestamp;             // 응답을 만든 시각
+  dataUpdatedAt: Timestamp | null;   // 사용한 위치 기록의 수집 시각(collected_at). 기록이 없으면 null
+  stale: boolean;                    // 수집 시간 안인데 dataUpdatedAt 이 '정보 오래됨' 기준(초기값 60초)보다 오래됨. 수집 시간 밖이면 항상 false
+  inCollectionWindow: boolean;       // 지금이 수집 시간(평일 05:30~10:15) 안인지
+  nextRefreshAt: Timestamp;          // 다음 조회 권장 시각(1.3절 규칙, 수집 시간 밖이면 다음 수집 시작)
+  stations: {                        // stationSeq 오름차순
+    stationSeq: number;
+    stationId: StationId;
+    name: string;
+    lat: number;                     // WGS84 위도(GBIS y)
+    lng: number;                     // WGS84 경도(GBIS x)
+    isOutbound: boolean;             // 잠실행 구간(stationSeq ≤ 회차 순번)이면 true, 회차 뒤 귀로면 false
+    isTarget: boolean;               // stationId == targetStationId
+  }[];
+  vehicles: {                        // 최신 위치 기록의 차량. 수집 시간 밖이면 마지막 기록 그대로
+    vehicleId: VehicleId;
+    plateNo: string | null;
+    stationSeq: number;              // GBIS 가 준 현재 정류장 순번
+    stationId: StationId;
+    state: "arrived" | "departed" | "passing" | "unknown";  // GBIS stateCd 1 도착, 2 출발, 0 교차로 통과, 그 밖 unknown
+    remainSeats: number | null;      // 잔여석. GBIS 값이 -1·빈값·음수면 null('정보 없음', 0석 아님)
+    stopsToTarget: number | null;    // 내 정류장까지 남은 정류장 수(잠실행 구간에서 내 정류장 앞에 있을 때만, 아니면 null).
+                                     // 내 정류장에 도착·통과 중이면 0, 내 정류장에서 '출발'이면 이미 떠났으므로 null
+  }[];
+}
+```
+에러: 404(지원하지 않는 노선), 400(ID 형식)
+
+- 위치 기록은 오늘 수집 파일에서 그 노선의 마지막 성공 기록을 쓴다. 오늘 기록이 없으면 최대 7일 전까지 거슬러 간다(설정). 수집 시간 안에 이전 날 기록을 보여 주면 `stale=true` 다.
+- 시운전(`mode: trial`) 기록도 지도에는 쓴다. 지도는 통계를 내지 않으므로 '사례·평가에서 뺀다'는 규칙과 별개다(설정 하나로 끌 수 있음).
+- `nextRefreshAt` 은 1.3절과 같은 방식(다음 수집 경계 + 3초)이되, 경계는 **그 노선의 수집 주기**로 잡는다(G1300 10초, 1306 30초). 1306 을 10초마다 다시 받아도 같은 데이터이기 때문이다.
+- `stopsToTarget` 은 내 정류장 순번에서 상태가 `unknown` 이어도 0 이다(떠났다는 근거가 `departed` 뿐이므로).
+- 정류장 좌표가 같은 노선 안에서 두 번 나오면(회차 전후 같은 정류장) 순번이 다르므로 그대로 둘 다 준다.
+- `remainSeats: null` 과 `0` 은 다르다. 화면은 null 을 "정보 없음"으로, 0 을 "0석"으로 쓴다.
+- `plateNo` 는 노선버스(법인 차량) 번호판으로 GBIS 공개 데이터 그대로다. 이용자가 탈 차를 알아보는 데 쓴다. 이용자 개인정보는 응답에 없다.
+
 ### 4.7 추후 추가 (모양만, 구현은 다음 단계)
 ```ts
 // GET /api/v1/notices?station=235000392   (F09) 팀원이 승인한 공지만
@@ -377,6 +426,7 @@ interface Alternatives {
 |---|---|
 | 조건 입력 | `/stations`, `/stations/{id}/routes`, (선택) `/parse-query` |
 | 예보 | `/snapshot` 의 `buses[].selectedLeadTimeMin` 예보 → 이어서 `/snapshot/{id}/explanation` |
+| 예보(지도) | `/routes/{routeId}/positions` (스냅샷 노선마다 1회, `/snapshot` 과 별도로 갱신). 수집 시간 밖이라 스냅샷 `buses` 가 비면 `/stations/{id}/routes` 의 같은 목적지 노선을 쓴다 |
 | 대안 비교 | `/snapshot` 의 `alternatives` (`switchSuggested` 이면 강조) |
 | 근거 부족 | 선택된 예보의 `status` 가 `ok` 가 아님, 또는 `stale`, 또는 대안 상태가 `recommended` 가 아님 |
 | 예보 시간 아님 | `service.state` 가 `in_service` 가 아님 |
@@ -485,3 +535,4 @@ interface Alternatives {
 | 2026-10-06 | v2: 선행시간(`not_yet`, `issuedAt`, `selectedLeadTimeMin`), 서비스 시간(`service`), 대안 결정 규칙·`switchSuggested`, 공지·리포트 추후 추가, 호출 제한·CORS, 캐시 10초·`nextRefreshAt`, 설명 대기·`fallbackReason`, `arrivalEstimateSource`, `rulesVersion`, `probability` → `noSeatProbability`, `/health` 공개·상세 분리, 화면 요구(영상 녹화), 예시 응답 | FE/BE |
 | 2026-10-06 | v2 결정 반영: `outside_hours` 승인, 분 단위 대체 임시 승인·스냅샷 저장, `/health/detail` 토큰 헤더(`X-Health-Token`, 없거나 틀리면 404), 다음 예보 시작 05:45·공휴일 목록, 미정 2건 추가, 12장 개발용 `scenario` | FE/BE |
 | 2026-10-06 | 구현 반영: `noSeatProbability` = round(k/n, 4)(9장 예시 0.62 → 0.6154), SnapshotId = `forecast_group.forecast_group_id`, 서비스 상태는 시계로 판정·수집 시간 밖 `stale=false`, 가짜 응답의 deadline 무시·재조회 최소 10초, `/health/detail` 문서 제외·토큰 32자 이상·은닉은 부분적, POST 본문 4096바이트 상한 | FE/BE |
+| 2026-10-07 | 4.8 `GET /routes/{routeId}/positions` 추가(F02 지도: 정류장 좌표, 최신 차량 위치·잔여석, `remainSeats` null 은 '정보 없음'). 과거 시각 파라미터 없음 | FE/BE |
