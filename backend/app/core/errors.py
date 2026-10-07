@@ -29,6 +29,7 @@ ERROR_MESSAGES: dict[ErrorCode, str] = {
 _FORMAT_REASON_BY_FIELD: dict[str, str] = {
     "station": "숫자 1–20자리여야 합니다",
     "stationId": "숫자 1–20자리여야 합니다",
+    "routeId": "숫자 1–20자리여야 합니다",
     "destination": "영문 소문자와 _ 1–32자여야 합니다",
     "deadline": "HH:MM 형식(00:00–23:59)이어야 합니다",
     "snapshotId": "uuid 형식이어야 합니다",

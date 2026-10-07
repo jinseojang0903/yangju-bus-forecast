@@ -1,0 +1,115 @@
+{
+  "collected_at": "2026-10-06T09:35:14.850+09:00",
+  "api": "getBusRouteStationListv2",
+  "params": {
+    "routeId": "235000092",
+    "format": "json"
+  },
+  "http_status": 200,
+  "elapsed_ms": 35,
+  "ok": true,
+  "result_code": "0",
+  "result_message": "정상적으로 처리되었습니다.",
+  "error": null,
+  "is_weekday": true,
+  "is_holiday": false,
+  "mode": "discover",
+  "body": {
+    "response": {
+      "comMsgHeader": "",
+      "msgHeader": {
+        "queryTime": "2026-10-06 09:35:22.117",
+        "resultCode": 0,
+        "resultMessage": "정상적으로 처리되었습니다."
+      },
+      "msgBody": {
+        "busRouteStationList": [
+          {
+            "centerYn": "N",
+            "districtCd": 2,
+            "mobileNo": " 39002",
+            "regionName": "양주",
+            "stationId": 100000002,
+            "stationName": "고읍지구입구",
+            "x": 127.071,
+            "y": 37.801,
+            "adminName": "경기도 양주시",
+            "stationSeq": 2,
+            "turnSeq": 4,
+            "turnYn": "N"
+          },
+          {
+            "centerYn": "N",
+            "districtCd": 2,
+            "mobileNo": " 39001",
+            "regionName": "양주",
+            "stationId": 100000001,
+            "stationName": "양주차고지",
+            "x": 127.0658833,
+            "y": 37.8528667,
+            "adminName": "경기도 양주시",
+            "stationSeq": 1,
+            "turnSeq": 4,
+            "turnYn": "N"
+          },
+          {
+            "centerYn": "N",
+            "districtCd": 2,
+            "mobileNo": " 39003",
+            "regionName": "양주",
+            "stationId": 235000392,
+            "stationName": "덕현초교.덕고개",
+            "x": 127.0807333,
+            "y": 37.79825,
+            "adminName": "경기도 양주시",
+            "stationSeq": 3,
+            "turnSeq": 4,
+            "turnYn": "N"
+          },
+          {
+            "centerYn": "N",
+            "districtCd": 2,
+            "mobileNo": " 39004",
+            "regionName": "양주",
+            "stationId": 100000004,
+            "stationName": "잠실광역환승센터",
+            "x": 127.1,
+            "y": 37.51,
+            "adminName": "경기도 양주시",
+            "stationSeq": 4,
+            "turnSeq": 4,
+            "turnYn": "Y"
+          },
+          {
+            "centerYn": "N",
+            "districtCd": 2,
+            "mobileNo": " 39005",
+            "regionName": "양주",
+            "stationId": 235000409,
+            "stationName": "덕현초교.덕고개",
+            "x": 127.0808,
+            "y": 37.7983,
+            "adminName": "경기도 양주시",
+            "stationSeq": 5,
+            "turnSeq": 4,
+            "turnYn": "N"
+          },
+          {
+            "centerYn": "N",
+            "districtCd": 2,
+            "mobileNo": " 39006",
+            "regionName": "양주",
+            "stationId": 100000001,
+            "stationName": "양주차고지",
+            "x": 127.0658833,
+            "y": 37.8528667,
+            "adminName": "경기도 양주시",
+            "stationSeq": 6,
+            "turnSeq": 4,
+            "turnYn": "N"
+          }
+        ]
+      }
+    }
+  }
+}

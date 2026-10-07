@@ -13,10 +13,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from app.collector.collector import MODE_TRIAL
 from app.collector.gbis import as_list
 from app.collector.schedule import is_holiday as is_korean_holiday
-from app.core.settings import GBIS_BUS_LOCATION, KST
+from app.core.settings import GBIS_BUS_LOCATION, KST, MODE_TRIAL
 
 _INT_PATTERN = re.compile(r"-?\d+")
 
@@ -69,7 +68,8 @@ def as_int(value: Any) -> int | None:
     return None
 
 
-def _as_id(value: Any) -> str | None:
+def as_id(value: Any) -> str | None:
+    """GBIS ID(숫자 또는 문자열) → 앞뒤 공백을 뺀 문자열. 없거나 빈 값·불리언이면 None."""
     if isinstance(value, bool) or value is None:
         return None
     if isinstance(value, int):
@@ -117,7 +117,7 @@ def extract_positions(line: Mapping[str, Any]) -> tuple[list[PositionRecord], in
         return [], 0
 
     params = line.get("params")
-    param_route_id = _as_id(params.get("routeId")) if isinstance(params, Mapping) else None
+    param_route_id = as_id(params.get("routeId")) if isinstance(params, Mapping) else None
     holiday_flag = line.get("is_holiday")
     is_holiday = (
         holiday_flag if isinstance(holiday_flag, bool) else is_korean_holiday(collected_at.date())
@@ -128,8 +128,8 @@ def extract_positions(line: Mapping[str, Any]) -> tuple[list[PositionRecord], in
     records: list[PositionRecord] = []
     skipped = 0
     for item in items:
-        route_id = _as_id(item.get("routeId")) or param_route_id
-        veh_id = _as_id(item.get("vehId"))
+        route_id = as_id(item.get("routeId")) or param_route_id
+        veh_id = as_id(item.get("vehId"))
         station_seq = as_int(item.get("stationSeq"))
         if route_id is None or veh_id is None or station_seq is None:
             skipped += 1
@@ -141,11 +141,11 @@ def extract_positions(line: Mapping[str, Any]) -> tuple[list[PositionRecord], in
                 route_id=route_id,
                 veh_id=veh_id,
                 station_seq=station_seq,
-                station_id=_as_id(item.get("stationId")),
+                station_id=as_id(item.get("stationId")),
                 state_cd=as_int(item.get("stateCd")),
                 remain_seat_cnt=as_int(item.get("remainSeatCnt")),
                 plate_no=plate_no if isinstance(plate_no, str) else None,
-                route_type_cd=_as_id(item.get("routeTypeCd")),
+                route_type_cd=as_id(item.get("routeTypeCd")),
                 mode=mode,
                 interval_sec=interval_sec,
                 is_holiday=is_holiday,

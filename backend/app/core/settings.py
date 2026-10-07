@@ -39,6 +39,12 @@ TARGETS_FILENAME: Final = "targets.json"
 LOG_MAX_BYTES: Final = 5 * 1024 * 1024
 LOG_BACKUP_COUNT: Final = 10
 
+# 수집 기록(JSONL)의 mode 값.
+MODE_RUN: Final = "run"
+MODE_ONCE: Final = "once"
+# 시운전. 평가·사례에서 이 mode 의 기록은 뺀다.
+MODE_TRIAL: Final = "trial"
+
 # ---------------------------------------------------------------------------
 # 시간대와 수집 창
 # ---------------------------------------------------------------------------
@@ -208,6 +214,9 @@ YANGJU_ROUTES: Final = (
     ),
 )
 
+# 덕현초교.덕고개 잠실행 stationId. 수집 대상과 노선 지도(내 정류장 강조)가 함께 쓴다.
+BOARD_STATION_ID: Final = "235000392"
+
 COLLECT_TARGET: Final = CollectTarget(
     board_station_name="덕현초교",
     direction_label="잠실행",
@@ -215,7 +224,7 @@ COLLECT_TARGET: Final = CollectTarget(
     routes=(ROUTE_G1300, ROUTE_1306),
     # 덕현초교.덕고개 잠실행(mobileNo 39624). G1300 순번 13, 1306 순번 11. 두 노선이 같은 ID 를
     # 쓰므로 도착 API 는 1곳만 부른다. 반대 방향은 235000409(mobileNo 39625, 회차 뒤).
-    board_station_id="235000392",
+    board_station_id=BOARD_STATION_ID,
     arrival_interval_sec=30,  # 사용자 결정(2026-10-06): 도착(덕현초교) 30초
     # 허용 보행시간 0분·환승 없음: 사용자 결정(2026-10-06), CLAUDE.md 표 밖의 값.
     walk_minutes_allowed=0,
@@ -509,6 +518,29 @@ HEALTH_DEGRADED_CONSECUTIVE_FAILURES: Final = 3
 HEALTH_DETAIL_TOKEN_MIN_LENGTH: Final = 32
 # POST 본문 상한(바이트). 넘으면 본문을 읽기 전에 400.
 MAX_REQUEST_BODY_BYTES: Final = 4096
+
+
+# ---------------------------------------------------------------------------
+# 노선 지도: 정류장 좌표와 최신 수집 차량 위치(계약 4.8절, F02 지도)
+# ---------------------------------------------------------------------------
+# 지원 노선. 정류장 좌표 기준정보(getBusRouteStationListv2 기록)가 있는 노선만 둔다.
+ROUTE_POSITIONS_ROUTES: Final = (ROUTE_G1300, ROUTE_1306)
+# 지도에서 강조할 내 정류장(덕현초교 잠실행).
+ROUTE_POSITIONS_TARGET_STATION_ID: Final = BOARD_STATION_ID
+# 응답 캐시(초). 스냅샷 캐시와 같은 값(계약 4.8절 '1.3절과 같은 값').
+ROUTE_POSITIONS_CACHE_TTL_SEC: Final = SNAPSHOT_CACHE_TTL_SEC
+# 오늘 위치 기록이 없으면 이 일수만큼 전날 폴더로 거슬러 가며 찾는다(주말·연휴 대비).
+ROUTE_POSITIONS_LOOKBACK_DAYS: Final = 7
+# 시운전(mode=trial) 위치 기록도 지도에 쓴다. 사례·평가 제외 규칙과 별개다.
+# 지도는 '지금 차가 어디 있나'만 보여 주고 통계를 내지 않으므로 실제 GBIS 응답이면 쓴다.
+ROUTE_POSITIONS_INCLUDE_TRIAL: Final = True
+# raw_poll.jsonl 을 끝에서부터 거꾸로 읽을 때 한 번에 읽는 크기(바이트). 운영값.
+RAW_POLL_TAIL_CHUNK_BYTES: Final = 256 * 1024
+# 날짜 파일 하나에서 거꾸로 읽는 바이트 상한. 이 안에서 노선 줄을 못 찾으면
+# 그 날짜는 '기록 없음'으로 보고 전날로 간다.
+# 요청 하나가 읽는 최대량 = 상한 × (거슬러 갈 일수 + 1).
+# 4MB 는 하루 파일의 약 50분 분량이다. 운영값.
+RAW_POLL_TAIL_MAX_BYTES_PER_FILE: Final = 4 * 1024 * 1024
 
 
 @dataclass(frozen=True)

@@ -12,10 +12,13 @@ from app.core.ratelimit import RateLimiter
 from app.core.settings import API_RATE_LIMITS, KST, RateLimitRule, Settings
 from app.repositories.base import ForecastRepository
 from app.repositories.collector_status import CollectorStatusRepository
+from app.repositories.route_positions import RoutePositionRepository
+from app.schemas.route_positions import RoutePositionsResponse
 from app.schemas.snapshot import SnapshotResponse
 from app.services.cache import TtlCache
 from app.services.health import HealthService
 from app.services.parse_query import ParseQueryService
+from app.services.route_positions import RoutePositionService
 from app.services.snapshot import SnapshotService
 from app.services.stations import StationService
 
@@ -67,6 +70,22 @@ def get_snapshot_service(
 ) -> SnapshotService:
     cache: TtlCache[SnapshotResponse | None] = request.app.state.snapshot_cache
     return SnapshotService(repository, cache, now)
+
+
+def get_route_position_repository(
+    settings: Annotated[Settings, Depends(get_app_settings)],
+) -> RoutePositionRepository:
+    """노선 지도용 수집 파일 저장소. FAKE_DATA 와 관계없이 실제 수집 파일을 읽는다(계약 4.8절)."""
+    return RoutePositionRepository(settings.data_dir)
+
+
+def get_route_position_service(
+    request: Request,
+    repository: Annotated[RoutePositionRepository, Depends(get_route_position_repository)],
+    now: Annotated[datetime, Depends(get_now)],
+) -> RoutePositionService:
+    cache: TtlCache[RoutePositionsResponse | None] = request.app.state.route_positions_cache
+    return RoutePositionService(repository, cache, now)
 
 
 def get_parse_query_service() -> ParseQueryService:

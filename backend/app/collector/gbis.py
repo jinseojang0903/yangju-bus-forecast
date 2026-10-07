@@ -61,7 +61,8 @@ class CallResult:
     is_empty: bool = False
 
 
-def _normalize_code(value: Any) -> str | None:
+def normalize_result_code(value: Any) -> str | None:
+    """결과 코드를 비교용 문자열로. 숫자면 앞의 0 을 뗀다("00" → "0"). 빈 값이면 None."""
     if value is None:
         return None
     text = str(value).strip()
@@ -106,7 +107,7 @@ def _parse_non_json(text: str) -> ParsedBody:
     if any(marker in text for marker in GBIS_GATEWAY_ERROR_MARKERS):
         auth_message = _xml_tag(text, "returnAuthMsg")
         err_message = _xml_tag(text, "errMsg")
-        reason_code = _normalize_code(_xml_tag(text, "returnReasonCode"))
+        reason_code = normalize_result_code(_xml_tag(text, "returnReasonCode"))
         message = auth_message or err_message
         error = f"게이트웨이 오류: {message or '알 수 없음'}"
         if reason_code:
@@ -134,7 +135,7 @@ def _parse_non_json(text: str) -> ParsedBody:
             is_quota_exceeded=True,
         )
     if text.lstrip().startswith("<"):
-        code = _normalize_code(_xml_tag(text, "resultCode"))
+        code = normalize_result_code(_xml_tag(text, "resultCode"))
         message = _xml_tag(text, "resultMessage") or _xml_tag(text, "resultMsg")
         return ParsedBody(
             ok=False,
@@ -184,13 +185,13 @@ def parse_body(text: str, list_key: str) -> ParsedBody:
     is_quota_exceeded = GBIS_QUOTA_EXCEEDED_MARKER in text
     header = response.get("msgHeader")
     if isinstance(header, dict):
-        code = _normalize_code(header.get("resultCode"))
+        code = normalize_result_code(header.get("resultCode"))
         message = _as_text(header.get("resultMessage"))
     else:
         # 공공데이터포털 표준 형식(header.resultCode/resultMsg)으로 오는 경우 대비
         alt_header = response.get("header")
         if isinstance(alt_header, dict):
-            code = _normalize_code(alt_header.get("resultCode"))
+            code = normalize_result_code(alt_header.get("resultCode"))
             message = _as_text(alt_header.get("resultMsg") or alt_header.get("resultMessage"))
             is_quota_exceeded = is_quota_exceeded or code in GBIS_QUOTA_EXCEEDED_REASON_CODES
 
