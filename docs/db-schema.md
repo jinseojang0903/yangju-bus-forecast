@@ -209,7 +209,7 @@ FK 없이 값으로 잇는 관계(점선 대신 글로 적는다):
 8. **라벨 등급 중 무엇을 정답으로 쓸지**: strict만 쓸지, strict와 relaxed를 함께 쓸지. 둘 다 저장하고 사례·평가 쿼리에서 고른다.
 9. **규칙 버전과 공개 판정**: `rules_version`이 바뀌면(선행시간 선택·대안 규칙만 바뀌어도) 이전 판정을 쓰지 않으므로 다시 예비로 돌아간다. 판정을 사례 검색 규칙 버전에만 묶을지.
 10. **case_feature 계산 불가 사유 코드**: 초안 5개(`no_target_arrival`, `no_arrival_estimate`, `no_record_near_reference`, `seat_unknown`, `no_preceding_vehicle`)를 확정한다.
-11. **접속 역할 분리**: API용 `api_reader`(읽기와 묶음·스냅샷·llm_log 쓰기)와 수집기용 `collector_writer`(raw_poll·bus_position·bus_arrival 쓰기) 역할을 만들고, 역할별 GRANT와 RLS 정책을 둔다. 소유자 `postgres`로는 접속하지 않는다.
+11. **접속 역할 분리**: API용 `api_reader`(읽기와 묶음·스냅샷·llm_log 쓰기)와 수집기용 `collector_writer`(raw_poll·bus_position·bus_arrival 쓰기) 역할을 만들고, 역할별 GRANT와 RLS 정책을 둔다. 소유자 `postgres`로는 접속하지 않는다. 적재 스크립트용 초안은 `backend/migrations/0002_loader_role.sql`(`loader_writer`, 미적용)이다. 적용 순서: 회의 결정 → SQL Editor 에서 0002 실행 → `\password loader_writer` 로 비밀번호 설정 → 파일 끝 '적용 뒤 확인' → 서버 `DATABASE_URL` 을 `loader_writer.<프로젝트 ref>` 로 교체 → 자동 적재 타이머 등록.
     - 주의: 소유자가 아닌 역할은 RLS를 적용받는다. 정책 없이 GRANT만 주면 모든 조회가 0행이 된다(오류 없이 빈 결과).
 
 v1 안건 중 정해진 것: 묶음 테이블 도입(forecast_group), raw_poll은 메타데이터만 DB에, 판정 전 확률은 '제공 + 예비'이고 판정 실패면 `not_validated`, segment_time은 한 쌍만, 사례 특징은 테이블로 미리 계산, 선행시간 3개 모두 저장.
@@ -270,7 +270,7 @@ v1 안건 중 정해진 것: 묶음 테이블 도입(forecast_group), raw_poll�
    ROLLBACK;
    select count(*) from public.route;   -- 0
    ```
-7. **되돌릴 때는 `backend/migrations/down/0001_down.sql`을 쓴다.** 대상 프로젝트를 확인한 뒤, 같은 편집기 창에서 첫 줄의 `SET app.confirm_down = 'yes';` 주석을 풀고 실행한다(없으면 오류로 멈춘다). 데이터도 모두 지워진다. 이름순으로 실행하는 도구가 실수로 돌리지 않도록 별도 폴더에 둔다. 기본 권한 회수(ALTER DEFAULT PRIVILEGES)는 되돌리지 않는다.
+7. **되돌릴 때는 `backend/migrations/down/0001_down.sql`을 쓴다.** 대상 프로젝트를 확인한 뒤, 같은 편집기 창에서 BEGIN 바로 아래의 `SET LOCAL app.confirm_down_0001 = 'yes';` 주석을 풀고 실행한다(없으면 오류로 멈춘다. SET LOCAL 이라 세션에 남지 않고, down 파일마다 변수 이름이 달라 다른 파일은 통과하지 않는다. 0002 는 `app.confirm_down_0002`). 데이터도 모두 지워진다. 이름순으로 실행하는 도구가 실수로 돌리지 않도록 별도 폴더에 둔다. 기본 권한 회수(ALTER DEFAULT PRIVILEGES)는 되돌리지 않는다.
 
 ## Supabase 적용 전 확인
 
