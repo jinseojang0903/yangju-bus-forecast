@@ -582,6 +582,9 @@ class Settings(BaseSettings):
 
     gbis_service_key: SecretStr = SecretStr("")
     database_url: SecretStr = SecretStr("")
+    # 선택. DB 서버 CA 인증서 파일 경로(Supabase 대시보드에서 내려받음). 있으면 적재 스크립트가
+    # sslmode=verify-full 로 접속해 서버를 확인한다. 비면 sslmode=require(암호화만).
+    database_sslrootcert: str = ""
     llm_api_key: SecretStr = SecretStr("")
     collect_data_dir: str = ""
 
@@ -609,6 +612,12 @@ class Settings(BaseSettings):
     @property
     def has_database_url(self) -> bool:
         return bool(self.database_url.get_secret_value().strip())
+
+    @property
+    def database_sslrootcert_path(self) -> Path | None:
+        """DATABASE_SSLROOTCERT 경로. 비어 있으면 None."""
+        configured = self.database_sslrootcert.strip()
+        return Path(configured).expanduser() if configured else None
 
     @property
     def data_dir(self) -> Path:

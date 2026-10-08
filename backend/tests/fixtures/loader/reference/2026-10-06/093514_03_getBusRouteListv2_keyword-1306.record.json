@@ -1,0 +1,17 @@
+{
+  "collected_at": "2026-10-06T09:35:14.963+09:00",
+  "api": "getBusRouteListv2",
+  "params": {"keyword": "1306", "format": "json"},
+  "http_status": 200,
+  "elapsed_ms": 28,
+  "ok": true,
+  "result_code": "0",
+  "result_message": "정상적으로 처리되었습니다.",
+  "error": null,
+  "is_weekday": true,
+  "is_holiday": false,
+  "mode": "discover",
+  "body": {"response": {"comMsgHeader": "", "msgHeader": {"queryTime": "2026-10-06 09:36:14.709", "resultCode": 0, "resultMessage": "정상적으로 처리되었습니다."}, "msgBody": {"busRouteList":
+    {"adminName": "경기도 양주시", "districtCd": 2, "endStationId": 123000511, "endStationName": "잠실역", "regionName": "서울,양주", "routeId": 235000123, "routeName": 1306, "routeTypeCd": 11, "routeTypeName": "직행좌석형시내버스", "startStationId": 235000117, "startStationName": "덕정역"}
+  }}}
+}
