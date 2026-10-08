@@ -96,11 +96,15 @@ F03에서 잔여석과 앞차 간격은 사용자가 넣는 값이 아니라 서
 |---|---|
 | 수집·계산 | Python |
 | API 서버 | FastAPI |
-| DB | PostgreSQL (Supabase) |
+| DB | PostgreSQL 17 (Supabase 무료, 서울 리전). 운영·개발 모두 이 DB 를 쓰고 로컬 DB·Docker 는 쓰지 않는다 |
 | 프론트엔드 | React + Vite + TypeScript |
-| 서버 | Oracle Cloud 무료 인스턴스 (ARM Ampere A1, 2 OCPU, 12GB RAM, 블록 스토리지 200GB) |
+| 서버 | Azure VM (팀원 Azure for Students, Korea Central, Ubuntu 24.04, 2 vCPU, 메모리 1GiB + 스왑 2GB). 수집기·시연용 API 를 systemd 서비스로 운영 |
 
-별첨 3은 AWS Lightsail과 직접 설치한 PostgreSQL 기준으로 운영비를 산정했다. 현재 구성은 그와 다르므로 발표자료에 변경 사실을 적는다.
+별첨 3은 AWS Lightsail과 직접 설치한 PostgreSQL 기준으로 운영비를 산정했다. 현재 구성은 그와 다르므로 발표자료에 변경 사실을 적는다(서버 2026-10-07 Oracle 예정 → Azure 로 변경).
+
+- 저장소는 **공개**(GitHub, 2026-10-08 전환)다. 서버 IP·계정·접속 키, Supabase 프로젝트 주소·비밀번호, 수집 원본은 문서·커밋·PR 본문에 쓰지 않는다.
+- 서버 메모리가 작아 수집기를 최우선으로 지킨다. 무거운 작업(테스트, 분석, 빌드)은 서버에서 하지 않는다.
+- 수집기는 AI 코딩 도구의 백그라운드 작업으로 띄우지 않는다(메모리 정리 때 함께 꺼진다). 서버 systemd 또는 직접 연 창·작업 스케줄러로만 돌린다.
 
 ### 데이터 흐름
 1. 수집기가 평일 05:30 이상 10:15 미만(KST)에 GBIS를 호출해 원본 응답과 위치 기록을 저장한다. 대상(노선·정류장)마다 독립 작업자가 자기 주기로 호출해 서로 기다리지 않는다. 주기는 위치 G1300 10초, 1306 30초, 나머지 10개 노선 40초, 도착(덕현초교) 30초다(사용자 결정 2026-10-06, 10/7부터. 1분 주기에서 정류장 출발 기록이 약 절반만 잡혀 대상 노선 주기를 줄였다). 기록마다 `interval_sec`를 남기고, 건너뛴 주기는 대상별로 센다. 시운전(`mode: trial`)과 공휴일 기록은 사례·평가에서 뺀다.
@@ -201,11 +205,12 @@ FastAPI의 `/docs`(OpenAPI)가 필드 수준 명세 역할을 한다. 계약 파
 | 빌드 | 해당 없음 | `npm run build` |
 
 ## 디렉터리
-- 백엔드: `backend/` (Python + FastAPI, uv). GBIS 수집기 `app/collector/`, 운행편·라벨 `app/labeling/`, 설정·고정 상수 `app/core/settings.py`. 예보 API 는 아직 없다(뼈대 예정).
+- 백엔드: `backend/` (Python + FastAPI, uv). GBIS 수집기 `app/collector/`, 운행편·라벨 `app/labeling/`, 예보 규칙 함수 `app/forecast/`, API `app/api/v1/`(지금은 가짜 응답, 지도 위치는 수집 파일), 설정·고정 상수 `app/core/settings.py`.
 - 분석: `analysis/` (노트북·일회성 분석, 사례 검색·평가 실험. backend-dev 담당. 아직 없음)
-- 프론트엔드: `frontend/` (React + Vite + TypeScript, npm, Biome). 시민용 모바일 웹. 아직 없음(뼈대 예정).
-- API 계약: `docs/api-contract.md` (작성 중)
-- 테이블: `backend/migrations/*.sql` 과 요약 `docs/db-schema.md` (작성 중)
+- 프론트엔드: `frontend/` (React + Vite + TypeScript, npm, Biome). 시민용 모바일 웹: 조건 입력·예보·근거 부족 화면, 노선 지도(Leaflet + OpenStreetMap, `src/components/map/` 에 격리).
+- API 계약: `docs/api-contract.md` (v2, 지도 위치 API 4.8절 포함)
+- 계산 함수 입출력: `docs/compute-interface.md`
+- 테이블: `backend/migrations/*.sql`(v2, Supabase 에 적용됨) 과 요약 `docs/db-schema.md`
 - 에이전트·규칙: `.claude/agents/`, `.claude/rules/`
 - hooks: `.claude/hooks/` (편집 후 포맷. .env 보호는 전역 설정에서 처리)
 - 수집기 배포: `deploy/` (systemd 서비스 파일, 서버 설치·백업·임시 실행 안내 `deploy/README.md`)
@@ -216,8 +221,10 @@ FastAPI의 `/docs`(OpenAPI)가 필드 수준 명세 역할을 한다. 계약 파
 - GBIS 서비스 키, Supabase 접속 정보, LLM API 키는 `.env` 에만 둔다. 코드, 로그, 계약 문서, 커밋에 넣지 않는다.
 - 프론트엔드 번들에는 어떤 키도 넣지 않는다. 외부 호출은 모두 백엔드를 거친다.
 
-## 현재 상태 (2026-10-06)
-- 범위를 좁히기 전에 만든 샘플 데이터 기반 API·화면은 기록과 함께 모두 삭제했다. 새 프로젝트로 다시 만든다.
-- 완료: 수집기(F05, 양주 광역 12개 노선, 10/7 05:30부터 팀원 Oracle 서버에서 가동 예정), 운행편·라벨 1차(F06, G1300·1306, 엄격·완화 등급).
-- 진행: API 명세(`docs/api-contract.md`), 테이블 SQL(`backend/migrations/`). 이후 백엔드·프론트 뼈대.
+## 현재 상태 (2026-10-08)
+- 수집기(F05): Azure 서버 systemd 서비스로 운영 중. 10/8 05:30 부터 정식 수집(10/7 은 PC 임시 수집 08:04~09:07 만 남음).
+- 운행편·라벨 1차(F06, G1300·1306, 엄격·완화 등급) 완료.
+- 머지됨: DB 스키마 v2(#6, Supabase 에 적용), 계약 v2 응답 모델·가짜 응답 API(#8), 화면 3종(#7), 노선 지도·위치 API(#9).
+- 리뷰 중: JSONL → Supabase 적재 스크립트(#10, 10/7 분 실적재 확인), 적재 전용 계정 초안(#11), 기획안 대조 문서(#12).
+- 다음: 라벨 DB 적재 → 기준정보·현재 버스 정보를 DB 에서(F02) → 스냅샷 저장(F07) → 무좌석 리포트(F10) → 서버 매일 자동화(적재·라벨·원본 백업). 모델링 산출물(사례 검색)과 LLM 키가 정해지면 F03·F08 을 연결한다.
 - 우선순위: ① 수집기 가동과 원본 저장 ② 테이블 SQL ③ 계약 파일과 응답 모델(가짜 데이터) ④ 화면 3종(조건 입력, 예보, 근거 부족) ⑤ 운행편 재구성·라벨 ⑥ 사례 검색 연결 ⑦ LLM 조건 변환·설명·검사기 ⑧ 리포트·평가 지표
