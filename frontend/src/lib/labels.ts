@@ -6,12 +6,14 @@ import type {
   ArrivalEstimateSource,
   ExplanationResponse,
   ForecastStatus,
+  HealthResponse,
   ParseQueryResponse,
   RecommendationReason,
   RiskLevel,
   ServiceState,
   VehicleState,
 } from "../api/types";
+import type { Elapsed } from "./time";
 
 export interface StatusText {
   title: string;
@@ -159,6 +161,42 @@ export const SERVICE_STATE_TEXT: Record<Exclude<ServiceState, "in_service">, str
 
 export const NEXT_FORECAST_START_LABEL = "다음 예보 시작";
 export const NEXT_FORECAST_START_UNKNOWN = "다음 예보 시작 시각을 아직 알 수 없어요.";
+
+// ── 수집 상태 줄 (계약 4.1, 모든 화면 상단) ───────────────────
+/** 상태 이름. 화면 낭독기는 이 부분이 바뀔 때만 읽는다(경과 시간은 읽지 않는다) */
+export const COLLECTION_STATUS_TITLE: Record<HealthResponse["status"], string> = {
+  ok: "수집 정상",
+  degraded: "수집 지연",
+  idle: "수집 시간 아님(평일 05:30–10:15)",
+};
+export const COLLECTION_NO_RECORD = "수집 기록 없음";
+export const COLLECTION_STATUS_UNAVAILABLE = "수집 상태를 확인할 수 없어요";
+export const COLLECTION_STATUS_LOADING = "수집 상태를 확인하는 중…";
+export const COLLECTION_STATUS_SEPARATOR = " · ";
+/** 이전 응답은 있는데 다시 부르기가 실패하고 있을 때 세부 뒤에 붙인다 */
+export const COLLECTION_STATUS_CHECK_DELAYED = "상태 확인 지연";
+
+/** "마지막 갱신 방금" / "마지막 갱신 3분 전" (ok·degraded) */
+export function lastUpdatedAgoText(agoText: string): string {
+  return `${LAST_UPDATED_LABEL} ${agoText}`;
+}
+
+/** "방금", "N분 전", "N시간 전". 단위 판정은 lib/time.ts 의 toElapsed */
+export function elapsedAgoText(elapsed: Elapsed): string {
+  switch (elapsed.unit) {
+    case "justNow":
+      return "방금";
+    case "minute":
+      return `${elapsed.value}분 전`;
+    case "hour":
+      return `${elapsed.value}시간 전`;
+  }
+}
+
+/** "마지막 수집 10:14" 또는 "마지막 수집 10/07 10:14" (idle) */
+export function lastCollectedAtText(time: string): string {
+  return `마지막 수집 ${time}`;
+}
 
 // ── 도착 예상 출처 ────────────────────────────────────────────
 /** predict_time_sec 는 기본이라 표시하지 않는다 */

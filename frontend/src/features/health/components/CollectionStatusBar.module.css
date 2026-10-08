@@ -1,0 +1,57 @@
+/* 헤더 바로 아래의 얇은 줄. 화면을 가리지 않도록 고정(sticky)하지 않는다. */
+.bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 4px 16px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--color-muted);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* 360px 에서 넘치면 상태 이름과 세부를 나눠 줄을 바꾼다(단어 중간에서 끊지 않는다). */
+.text {
+  display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.title,
+.detail {
+  white-space: nowrap;
+}
+
+.title {
+  font-weight: 600;
+}
+
+.ok .symbol {
+  color: var(--color-risk-low);
+}
+
+.warning {
+  color: var(--color-risk-medium);
+  background: var(--color-warning-bg);
+  border-bottom: 2px solid var(--color-warning-border);
+}
+
+.warning .title {
+  font-weight: 700;
+}
