@@ -62,7 +62,10 @@ class CallResult:
 
 
 def normalize_result_code(value: Any) -> str | None:
-    """결과 코드를 비교용 문자열로. 숫자면 앞의 0 을 뗀다("00" → "0"). 빈 값이면 None."""
+    """결과 코드를 문자열로 맞춘다. 숫자 문자열은 앞의 0 을 뗀다("00" → "0"). 비면 None.
+
+    적재 스크립트(app/loader)도 raw_poll.result_code 를 같은 규칙으로 맞춘다.
+    """
     if value is None:
         return None
     text = str(value).strip()
