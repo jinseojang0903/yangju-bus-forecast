@@ -2,6 +2,7 @@ import type { SnapshotRequest } from "./endpoints";
 import type { RouteId, SnapshotId, StationId } from "./types";
 
 export const queryKeys = {
+  health: () => ["health"] as const,
   stations: () => ["stations"] as const,
   stationRoutes: (stationId: StationId) => ["stations", stationId, "routes"] as const,
   snapshot: (request: SnapshotRequest) =>
