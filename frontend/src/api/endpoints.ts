@@ -1,6 +1,7 @@
 import { apiGet, apiPost } from "./client";
 import type {
   ExplanationResponse,
+  HealthResponse,
   ParseQueryRequest,
   ParseQueryResponse,
   RouteId,
@@ -12,6 +13,11 @@ import type {
   StationRoutesResponse,
   StationsResponse,
 } from "./types";
+
+/** GET /health (4.1). 공개용 최소 수집 상태. 실패는 공통 에러(429·500 등)뿐이다 */
+export function getHealth(signal?: AbortSignal): Promise<HealthResponse> {
+  return apiGet<HealthResponse>("/health", undefined, { signal });
+}
 
 /** GET /stations (4.3) */
 export function getStations(signal?: AbortSignal): Promise<StationsResponse> {

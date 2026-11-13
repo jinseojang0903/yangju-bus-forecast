@@ -28,6 +28,7 @@ const WEEKDAY_KO: Record<string, string> = {
 export const UNKNOWN_TIME = "--:--";
 
 interface KstParts {
+  year: number;
   month: number;
   day: number;
   weekday: string;
@@ -44,6 +45,7 @@ function toKstParts(timestamp: Timestamp): KstParts | null {
     parts[part.type] = part.value;
   }
   return {
+    year: Number(parts.year),
     month: Number(parts.month),
     day: Number(parts.day),
     weekday: WEEKDAY_KO[parts.weekday ?? ""] ?? "",
@@ -76,6 +78,38 @@ export function formatKstDateTime(timestamp: Timestamp | null): string {
   const parts = timestamp ? toKstParts(timestamp) : null;
   if (!parts) return UNKNOWN_TIME;
   return `${parts.month}월 ${parts.day}일(${parts.weekday}) ${parts.hour}:${parts.minute}`;
+}
+
+/** "10/07 07:31" (KST). 날짜가 필요한 짧은 표시(수집 상태 줄)에 쓴다. */
+export function formatKstMonthDayHourMinute(timestamp: Timestamp | null): string {
+  const parts = timestamp ? toKstParts(timestamp) : null;
+  if (!parts) return UNKNOWN_TIME;
+  return `${pad2(String(parts.month))}/${pad2(String(parts.day))} ${parts.hour}:${parts.minute}`;
+}
+
+/** 두 시각이 KST 로 같은 날짜인지. 하나라도 해석할 수 없으면 false */
+export function isSameKstDate(a: Timestamp, b: Timestamp): boolean {
+  const left = toKstParts(a);
+  const right = toKstParts(b);
+  if (!left || !right) return false;
+  return left.year === right.year && left.month === right.month && left.day === right.day;
+}
+
+/** 경과 시간을 표시 단위로 나눈 값. 문구는 lib/labels.ts 의 elapsedAgoText 가 만든다 */
+export type Elapsed =
+  | { unit: "justNow" }
+  | { unit: "minute"; value: number }
+  | { unit: "hour"; value: number };
+
+/**
+ * 60초 미만은 '방금'으로 묶고, 60분 미만은 분, 그 이상은 시간(모두 내림).
+ * 화면을 15초 단위로만 다시 그리므로 초 단위로 보이면 오차가 그대로 드러난다.
+ * 음수·해석 불가(NaN)는 '방금'으로 본다.
+ */
+export function toElapsed(ageSec: number): Elapsed {
+  if (!(ageSec >= 60)) return { unit: "justNow" };
+  if (ageSec < 3600) return { unit: "minute", value: Math.floor(ageSec / 60) };
+  return { unit: "hour", value: Math.floor(ageSec / 3600) };
 }
 
 /** 두 시각이 같은 순간인지(표기 차이는 무시). 하나라도 해석할 수 없으면 false */

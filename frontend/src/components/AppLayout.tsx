@@ -1,4 +1,5 @@
 import { Link, Outlet } from "react-router";
+import { CollectionStatusBar } from "../features/health/components/CollectionStatusBar";
 import styles from "./AppLayout.module.css";
 
 export function AppLayout() {
@@ -10,6 +11,7 @@ export function AppLayout() {
         </Link>
         <p className={styles.tagline}>양주 광역버스 무좌석 위험 예보</p>
       </header>
+      <CollectionStatusBar />
       <main className={styles.main}>
         <Outlet />
       </main>
