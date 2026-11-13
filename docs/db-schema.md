@@ -118,6 +118,19 @@ FK 없이 값으로 잇는 관계(점선 대신 글로 적는다):
 - **서비스 키 보호**: v1의 `params` serviceKey CHECK는 `params` 열과 함께 없어졌다. 대신 raw_poll에 자유 문자열 열(본문·파라미터·오류 메시지)을 두지 않고, `route_id`·`station_id`는 숫자만, `result_code`는 영문·숫자·`_-` 64자 이하만 받는다. 키가 들어갈 자리가 없다.
 - `jsonl_file`은 정규식으로 `날짜/이름.jsonl` 형식만 받는다(`..`·절대 경로 불가).
 
+### 적재 스크립트 (backend/app/loader)
+- 명령: `cd backend && uv run python -m app.loader load --date YYYY-MM-DD` (기간: `--from A --to B`, 확인만: `--dry-run`, 시운전 빼기: `--exclude-trial`), 기준정보: `... reference [--date YYYY-MM-DD]`.
+- 수집기와 분리된 배치다. 수집기의 DB 저장(`RAW_POLL_DB_SAVE_ENABLED`)은 꺼 둔 채로 두고, JSONL 이 기준이며 DB 는 언제든 다시 만들 수 있는 사본이다.
+- 대상 필터: 위치 API(getBusLocationListv2)의 G1300(235000092)·1306(235000123) 줄, 도착 API(getBusArrivalListv2)의 덕현초교 잠실행(235000392) 줄만 넣는다. 도착 항목은 G1300·1306 만, 순위별 차 정보(vehId·plateNo·predictTimeSec·predictTime)가 모두 비면 그 순위 행은 만들지 않는다. 나머지 10개 노선은 JSONL 에만 남는다. 값은 settings.COLLECT_TARGET 이 기준이다.
+- 순서·트랜잭션: 날짜마다 한 트랜잭션으로 service_day → raw_poll → bus_position → bus_arrival. 실패하면 그날 전체 롤백(종료 코드 3).
+- 멱등: raw_poll 은 (jsonl_file, line_no), 자식은 PK 로 ON CONFLICT DO NOTHING. 같은 날을 몇 번 돌려도 행 수가 같다. 줄바꿈 없이 끝나는 마지막 줄(쓰는 중)은 건너뛰었다가 다음 실행에서 넣는다.
+- 시운전: 기본으로 넣고 mode 열로 구분한다(사례·평가 제외는 조회에서).
+- service_day: is_weekday 는 요일, is_holiday 는 공휴일 라이브러리 또는 설정 공휴일 목록(SERVICE_HOURS.holidays) 중 하나라도 해당하면 true. operation_kind 는 그날 파일의 mode(run 줄이 있으면 regular, once·trial 만 있으면 trial, 파일 없음 → none). none 은 기존 regular·trial 을 덮지 않는다.
+- 공휴일 기준: 날짜 분류(사례·평가 대상일 고르기)의 기준은 service_day.is_holiday 다. raw_poll·bus_position 의 is_holiday 는 수집 당시 JSONL 플래그를 그대로 둔 원본 보존 값이다(플래그가 없는 이전 형식 줄만 라이브러리로 판정).
+- 기준정보(reference): route 는 settings 18개 노선. station 업서트는 이번 기록에 없는 값(NULL)으로 기존 값을 덮지 않는다(COALESCE). 같은 정류장이 여러 노선 목록에 나오면 값이 있는 쪽으로 합치고, 좌표가 범위 밖이면 NULL. route_station 은 정류장 목록과 같게 맞추되(없어진 순번 삭제), 그 노선 목록에 건너뛴 항목이 있으면 삭제하지 않고 경고한다.
+- 다시 넣기: 키가 있으면 넣지 않으므로 해석 규칙을 바꾼 뒤에는 그날 행을 지우고(자식 → raw_poll, jsonl_file 기준) 다시 넣는다. --exclude-trial 로 넣은 날을 기본으로 다시 넣으면 trial 줄이 추가된다.
+- 도착 응답의 `stateCd1/2` 는 담을 열이 없어 넣지 않는다(원본 JSONL 에 있음).
+- 실행 시각: 수집 창이 끝난 뒤 평일 10:30 에 서버에서 한 번(systemd timer 예정). 접속은 sslmode=require 이상, DATABASE_SSLROOTCERT(CA 인증서 경로)를 주면 verify-full.
 ### 보관 정책과 FK
 - bus_position·bus_arrival의 `raw_poll_id`는 NOT NULL이고 `ON DELETE RESTRICT`다. raw_poll이 작아져서(행당 약 0.3KB) 따로 지울 이유가 줄었으므로 **세 테이블을 같은 기간 보관하고 함께 지운다**(자식 먼저, 그다음 raw_poll). 실수로 raw_poll만 지우면 오류가 나서 위치 기록을 잃지 않는다.
 - bus_position의 대리키(`bus_position_id`)를 빼고 `(raw_poll_id, item_index)`를 기본키로 했다. 참조하는 곳이 없고, 행당 약 30B(하루 약 1MB)를 줄인다. `(route_id, veh_id, collected_at)` 인덱스도 뺐다(운행편 재구성은 노선·시각 범위로 읽고, 실시간은 최신 raw_poll_id로 읽는다).

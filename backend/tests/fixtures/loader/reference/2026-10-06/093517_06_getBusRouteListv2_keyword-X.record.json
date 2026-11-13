@@ -1,0 +1,15 @@
+{
+  "collected_at": "2026-10-06T09:35:17.000+09:00",
+  "api": "getBusRouteListv2",
+  "params": {"keyword": "X", "format": "json"},
+  "http_status": null,
+  "elapsed_ms": 10000,
+  "ok": false,
+  "result_code": null,
+  "result_message": null,
+  "error": "ReadTimeout: 시간 초과",
+  "is_weekday": true,
+  "is_holiday": false,
+  "mode": "discover",
+  "body": null
+}

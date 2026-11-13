@@ -1,0 +1,19 @@
+{
+  "collected_at": "2026-10-06T09:35:14.571+09:00",
+  "api": "getBusRouteListv2",
+  "params": {"keyword": "G1300", "format": "json"},
+  "http_status": 200,
+  "elapsed_ms": 196,
+  "ok": true,
+  "result_code": "0",
+  "result_message": "정상적으로 처리되었습니다.",
+  "error": null,
+  "is_weekday": true,
+  "is_holiday": false,
+  "mode": "discover",
+  "body": {"response": {"comMsgHeader": "", "msgHeader": {"queryTime": "2026-10-06 09:35:22.070", "resultCode": 0, "resultMessage": "정상적으로 처리되었습니다."}, "msgBody": {"busRouteList": [
+    {"adminName": "경기도 양주시", "districtCd": 2, "endStationId": 123000611, "endStationName": "잠실광역환승센터", "regionName": "서울,양주,의정부", "routeId": 235000092, "routeName": "G1300", "routeTypeCd": 11, "routeTypeName": "직행좌석형시내버스", "startStationId": 235000892, "startStationName": "덕정차고지"},
+    {"adminName": "경기도 양주시", "districtCd": 2, "endStationId": 123000611, "endStationName": "잠실광역환승센터", "regionName": "서울,양주,의정부", "routeId": 235000116, "routeName": "G1300N", "routeTypeCd": 11, "routeTypeName": "직행좌석형시내버스", "startStationId": 235000892, "startStationName": "덕정차고지"},
+    {"adminName": "서울특별시", "districtCd": 1, "endStationName": "어딘가", "regionName": "서울", "routeId": 999000001, "routeName": "G1300-테스트", "routeTypeCd": 11, "routeTypeName": "직행좌석형시내버스", "startStationName": "어딘가"}
+  ]}}}
+}

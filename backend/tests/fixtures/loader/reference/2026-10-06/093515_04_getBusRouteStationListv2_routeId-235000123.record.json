@@ -1,0 +1,19 @@
+{
+  "collected_at": "2026-10-06T09:35:15.010+09:00",
+  "api": "getBusRouteStationListv2",
+  "params": {"routeId": "235000123", "format": "json"},
+  "http_status": 200,
+  "elapsed_ms": 30,
+  "ok": true,
+  "result_code": "0",
+  "result_message": "정상적으로 처리되었습니다.",
+  "error": null,
+  "is_weekday": true,
+  "is_holiday": false,
+  "mode": "discover",
+  "body": {"response": {"comMsgHeader": "", "msgHeader": {"queryTime": "2026-10-06 09:35:22.273", "resultCode": 0, "resultMessage": "정상적으로 처리되었습니다."}, "msgBody": {"busRouteStationList": [
+    {"centerYn": "N", "districtCd": 2, "mobileNo": " 39520", "regionName": "양주", "stationId": 235000117, "stationName": "덕정역", "x": 127.0620833, "y": 37.8434333, "adminName": "경기도 양주시", "stationSeq": 1, "turnSeq": 3, "turnYn": "N"},
+    {"centerYn": "N", "districtCd": 2, "regionName": "양주", "stationId": 235000392, "stationName": "덕현초교.덕고개", "x": 999.5, "y": 37.81, "adminName": "경기도 양주시", "stationSeq": 2, "turnSeq": 3, "turnYn": "N"},
+    {"centerYn": "N", "districtCd": 1, "regionName": "서울", "stationId": 123000002, "stationName": "잠실역.잠실대교남단(중)", "x": 127.1, "y": 37.51, "adminName": "서울특별시", "stationSeq": 3, "turnSeq": 3, "turnYn": "Y"}
+  ]}}}
+}

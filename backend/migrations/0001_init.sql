@@ -144,7 +144,7 @@ COMMENT ON COLUMN public.service_day.note IS '특이사항(200자 이하. 예: �
 --   1) raw_poll: INSERT ... ON CONFLICT (jsonl_file, line_no) DO NOTHING RETURNING raw_poll_id.
 --      행이 돌아오지 않으면(이미 있음) 같은 키로 SELECT 해 raw_poll_id 를 얻는다.
 --   2) bus_position: INSERT ... ON CONFLICT (raw_poll_id, item_index) DO NOTHING.
---   3) bus_arrival : INSERT ... ON CONFLICT (raw_poll_id, route_id, arrival_rank) DO NOTHING.
+--   3) bus_arrival : INSERT ... ON CONFLICT (raw_poll_id, item_index, arrival_rank) DO NOTHING.
 --
 -- 보관 정리: raw_poll·bus_position·bus_arrival 은 같은 기간 보관하고 함께 지운다.
 -- 자식(bus_position·bus_arrival)을 먼저 지우고 raw_poll 을 지운다(FK 는 ON DELETE RESTRICT).

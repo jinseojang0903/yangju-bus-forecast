@@ -344,6 +344,26 @@ scp -i "<키파일경로>" ubuntu@<서버IP>:~/Yangju/data/collected/status.json
 
 `backup` 폴더는 저장소 안에 있으므로 커밋하지 않도록 주의한다(필요하면 저장소 밖 폴더로 바꿔도 된다).
 
+### 9-1. DB 적재: 수집이 끝난 뒤(평일 10:30) Supabase 에 넣기
+
+적재 스크립트(`app.loader`)는 수집기와 따로 도는 배치다. 그날 JSONL 에서 **G1300·1306 위치와 덕현초교 도착 줄만** 골라 `service_day` → `raw_poll` → `bus_position` → `bus_arrival` 에 날짜마다 한 트랜잭션으로 넣는다(나머지 10개 노선은 JSONL 에만 남는다). 같은 날을 여러 번 돌려도 행 수가 같으므로, 실패했거나 수집 중에 돌렸으면 그냥 다시 돌리면 된다(쓰는 중이던 마지막 줄은 다음 실행에서 들어간다). `backend/.env` 의 `DATABASE_URL` 을 쓰고, 접속은 항상 SSL(`sslmode=require` 이상)이다. 서버에서는 평일 10:30 에 한 번 돌릴 예정이며 타이머(systemd timer) 등록은 메인이 따로 한다. 손으로 돌릴 때:
+
+```bash
+cd ~/Yangju/backend
+~/.local/bin/uv run --frozen python -m app.loader load --date $(TZ=Asia/Seoul date +%F) --dry-run   # DB 없이 건수만
+~/.local/bin/uv run --frozen python -m app.loader load --date $(TZ=Asia/Seoul date +%F)
+~/.local/bin/uv run --frozen python -m app.loader reference      # 기준정보(route·station·route_station). discover 를 다시 했을 때만
+```
+
+밀린 날은 `load --from 2026-10-07 --to 2026-10-10` 처럼 한 번에 넣는다(파일이 없는 날은 `service_day` 에 `operation_kind=none` 만 남긴다). 종료 코드: 0 성공, 1 사용법(인자·폴더), 2 설정 누락(`DATABASE_URL` 없음, `DATABASE_SSLROOTCERT` 파일 없음, 대상 ID 없음), 3 적재 실패(그날 전체 롤백, 뒤 날짜는 하지 않음).
+
+**서버 인증서 확인(verify-full)**: 기본(`sslmode=require`)은 통신을 암호화하지만 상대가 진짜 Supabase 서버인지는 확인하지 않는다. Supabase 대시보드(Project Settings > Database > SSL Configuration)에서 CA 인증서(`prod-ca-2021.crt` 등)를 내려받아 서버의 저장소 밖 경로(예: `~/.config/yangju/supabase-ca.crt`)에 두고, `backend/.env` 에 `DATABASE_SSLROOTCERT=<그 경로>` 를 넣으면 적재 스크립트가 `sslmode=verify-full` 로 서버 인증서와 호스트 이름까지 확인한다. 경로를 넣었는데 파일이 없으면 종료 코드 2 로 멈춘다. 접속 문자열이나 `PGSSLMODE` 에 이미 `verify-ca`·`verify-full` 이 있으면 그 값을 쓴다.
+
+**다시 넣을 때 주의**
+- 적재는 키가 이미 있으면 넣지 않는다(`ON CONFLICT DO NOTHING`). 그래서 **해석 규칙(app/loader)을 바꾼 뒤 같은 날을 다시 돌려도 이미 들어간 행은 바뀌지 않는다.** 새 규칙으로 다시 만들려면 그날 행을 먼저 지운다(자식 먼저: `bus_position`·`bus_arrival` → `raw_poll`, `jsonl_file = '<날짜>/raw_poll.jsonl'` 기준). 원본은 JSONL 이므로 지워도 다시 만들 수 있다.
+- `--exclude-trial` 로 넣은 날을 나중에 기본(시운전 포함)으로 다시 돌리면 빠졌던 시운전 줄이 추가된다(반대로는 지워지지 않는다).
+- `reference` 는 정류장 목록에 건너뛴 항목이 있는 노선은 기준정보에서 없어진 순번을 지우지 않고 경고만 낸다. `--dry-run` 으로 노선별로 남길 순번을 먼저 본다.
+
 ---
 
 ## 10. 서버 준비 전까지 이 PC 에서 임시로 돌리기
@@ -455,6 +475,8 @@ powercfg /change hibernate-timeout-ac 0
 | `uv run python -m app.collector run --trial-until HH:MM [--interval-sec N] [--only-route NAME ...] [--skip-arrival]` | 시운전. 수집 창·요일을 무시하고 오늘 그 시각(KST) **전**까지 수집 대상 전부를 **각자 정식 주기**로 부른 뒤, 그 시각에 모든 작업자를 멈추고 종료한다(예: `--trial-until 11:30` 이면 G1300 은 11:29:50 호출이 마지막). `--interval-sec N` 을 주면 모든 대상을 N초마다 부른다. 경계는 KST 자정 기준 N초의 배수다(40초면 10:20:00, 10:20:40, 10:21:20 …). N 은 10~60 이고 86400 의 약수여야 한다(10·15·20·30·40·45·48·60 등). `--only-route G1300` 처럼 수집 노선을 골라 위치만 부를 수 있고(여러 번 쓸 수 있음, 수집 노선 이름만. 예: `--only-route "P9601(출근)"`), `--skip-arrival` 이면 도착 API 를 부르지 않는다. 세 옵션 모두 `--trial-until` 과 함께일 때만 쓸 수 있다. 기록은 `mode=trial` 로 남아 평가에서 제외한다. 호출 수는 하루 한도에 포함된다(전 노선 10분 시운전이면 위치 약 230회, 도착 20회). 지난 시각·형식 오류·허용되지 않는 N·모르는 노선이면 종료 코드 2 |
 | `uv run python -m app.collector status` | 오늘 상태 한 줄 JSON |
 | `uv run python -m app.collector save-fixture` | 실제 응답을 `backend/tests/fixtures/gbis/` 에 저장(키 제거) |
+| `uv run python -m app.loader load --date YYYY-MM-DD [--dry-run] [--exclude-trial]` | 그날 JSONL 의 G1300·1306 위치·덕현초교 도착을 DB 에 적재(9-1장). `--from A --to B` 로 기간 적재 |
+| `uv run python -m app.loader reference [--date YYYY-MM-DD] [--dry-run]` | 기준정보 폴더(기본: 가장 최근)로 route·station·route_station 업서트 |
 
 종료 코드: 0 정상, 1 호출 실패 있음, 2 설정 누락(서비스 키·routeId·stationId)·잘못된 옵션·정식 수집 설정이 계획 상한을 넘음, 또는 discover 가 후보를 못 골랐거나 노선 API 하루 상한으로 멈춤, 3 이미 실행 중.
 

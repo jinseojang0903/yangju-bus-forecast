@@ -69,7 +69,7 @@ def as_int(value: Any) -> int | None:
 
 
 def as_id(value: Any) -> str | None:
-    """GBIS ID(숫자 또는 문자열) → 앞뒤 공백을 뺀 문자열. 없거나 빈 값·불리언이면 None."""
+    """GBIS ID(숫자 또는 문자열)를 앞뒤 공백 없는 문자열로. 비었거나 불리언이면 None."""
     if isinstance(value, bool) or value is None:
         return None
     if isinstance(value, int):
@@ -87,6 +87,16 @@ def parse_collected_at(value: Any) -> datetime:
     if moment.tzinfo is None:
         raise ValueError("collected_at 에 시간대가 없다")
     return moment.astimezone(KST)
+
+
+def line_is_holiday(line: Mapping[str, Any], collected_at: datetime) -> bool:
+    """JSONL 줄의 공휴일 표시(수집 당시 플래그 그대로). 플래그가 없는 이전 형식 줄은 수집기와 같은
+    공휴일 라이브러리로 판정한다. 라벨·적재(raw_poll.is_holiday)가 함께 쓴다.
+
+    날짜 분류(사례·평가 대상일)의 기준은 이 값이 아니라 service_day.is_holiday 다.
+    """
+    flag = line.get("is_holiday")
+    return flag if isinstance(flag, bool) else is_korean_holiday(collected_at.date())
 
 
 def _location_items(body: Any) -> list[dict[str, Any]] | None:
@@ -118,10 +128,7 @@ def extract_positions(line: Mapping[str, Any]) -> tuple[list[PositionRecord], in
 
     params = line.get("params")
     param_route_id = as_id(params.get("routeId")) if isinstance(params, Mapping) else None
-    holiday_flag = line.get("is_holiday")
-    is_holiday = (
-        holiday_flag if isinstance(holiday_flag, bool) else is_korean_holiday(collected_at.date())
-    )
+    is_holiday = line_is_holiday(line, collected_at)
     mode = line.get("mode") if isinstance(line.get("mode"), str) else None
     interval_sec = as_int(line.get("interval_sec"))
 

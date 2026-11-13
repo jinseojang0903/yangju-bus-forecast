@@ -1,0 +1,17 @@
+{
+  "collected_at": "2026-10-06T09:35:16.000+09:00",
+  "api": "getBusRouteStationListv2",
+  "params": {"routeId": "999000001", "format": "json"},
+  "http_status": 200,
+  "elapsed_ms": 30,
+  "ok": true,
+  "result_code": "0",
+  "result_message": "정상적으로 처리되었습니다.",
+  "error": null,
+  "is_weekday": true,
+  "is_holiday": false,
+  "mode": "discover",
+  "body": {"response": {"comMsgHeader": "", "msgHeader": {"resultCode": 0}, "msgBody": {"busRouteStationList": [
+    {"regionName": "서울", "stationId": 123000001, "stationName": "다른 노선 정류장", "stationSeq": 1, "turnYn": "N"}
+  ]}}}
+}
