@@ -1,6 +1,7 @@
 -- 경고: 운영 DB 에 실행하지 말 것. 실행 전에 대상 DB(Supabase 프로젝트·접속 주소)를 반드시 확인한다.
--- 확인했으면 아래 줄의 주석을 풀고 실행한다. 없으면 가드가 오류를 내고 아무것도 지우지 않는다.
--- SET app.confirm_down = 'yes';
+-- 확인했으면 BEGIN 바로 아래의 `SET LOCAL app.confirm_down_0001 = 'yes';` 줄 주석을 풀고 실행한다.
+-- 없으면 가드가 오류를 내고 아무것도 지우지 않는다. SET LOCAL 이라 트랜잭션이 끝나면 값이 남지 않는다
+-- (같은 창에서 다른 down 파일을 실수로 실행해도 통과하지 않게 파일마다 변수 이름이 다르다).
 -- =============================================================================
 -- down/0001_down.sql : 0001_init.sql 되돌리기. 테이블 18개와 그 데이터를 모두 지운다.
 -- migrations/*.sql 을 이름순으로 실행하는 도구가 실수로 돌리지 않도록 별도 폴더에 둔다.
@@ -9,11 +10,12 @@
 -- =============================================================================
 
 BEGIN;
+-- SET LOCAL app.confirm_down_0001 = 'yes';
 
 DO $$
 BEGIN
-    IF coalesce(current_setting('app.confirm_down', true), '') <> 'yes' THEN
-        RAISE EXCEPTION '0001_down 중단: 대상 DB 를 확인한 뒤 SET app.confirm_down = ''yes''; 를 먼저 실행한다.';
+    IF coalesce(current_setting('app.confirm_down_0001', true), '') <> 'yes' THEN
+        RAISE EXCEPTION '0001_down 중단: 대상 DB 를 확인한 뒤 BEGIN 아래의 SET LOCAL app.confirm_down_0001 = ''yes''; 주석을 푼다.';
     END IF;
 END
 $$;
