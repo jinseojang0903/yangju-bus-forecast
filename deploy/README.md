@@ -73,13 +73,27 @@ sudo systemctl disable --now yangju-collector
 
 ## 1. 서버에 SSH 로 접속하기
 
-Oracle Cloud 와 AWS Lightsail(Ubuntu) 모두 사용자 이름은 `ubuntu` 다.
+지금 운영 서버는 팀원이 만든 **Azure VM**(Korea Central, Ubuntu 24.04, 메모리 1GiB + 스왑 2GB)이다(2026-10-07부터).
+서버 주소·사용자 이름·접속 키는 서버 관리자에게 따로 받는다. **이 저장소는 공개이므로 서버 IP·계정·키를 문서나 커밋에 적지 않는다.**
+Oracle Cloud·AWS Lightsail 이미지의 기본 사용자 이름은 `ubuntu` 이고, Azure 는 VM 을 만들 때 정한 이름이다. 아래 `<사용자>` 를 그 이름으로 바꾼다.
 
 ```powershell
-ssh -i "<키파일경로>" ubuntu@<서버IP>
+ssh -i "<키파일경로>" <사용자>@<서버IP>
 ```
 
-예(경로에 공백이 있는 경우): `ssh -i "C:\Users\me\바탕 화면\keys\oracle.key" ubuntu@123.45.67.89`
+예(경로에 공백이 있는 경우): `ssh -i "C:\Users\me\바탕 화면\keys\server.pem" <사용자>@123.45.67.89`
+
+키 파일은 OneDrive 처럼 동기화되는 폴더가 아니라 `C:\Users\<나>\.ssh\` 에 둔다. 매번 경로를 쓰기 번거로우면 `C:\Users\<나>\.ssh\config` 에 별칭을 둔다(메모장으로 저장할 때 `.txt` 가 붙지 않게 '모든 파일'로 저장한다):
+
+```
+Host yangju-server
+  HostName <서버IP>
+  User <사용자>
+  IdentityFile ~/.ssh/<키파일이름>
+  IdentitiesOnly yes
+```
+
+그 뒤로는 `ssh yangju-server` 로 접속한다. 처음 접속할 때 나오는 서버 지문(fingerprint)은 관리자가 알려 준 값과 같은지 확인한 뒤에만 `yes` 를 입력한다.
 
 "UNPROTECTED PRIVATE KEY FILE" 오류가 나면 키 파일 권한을 나만 읽게 바꾼 뒤 다시 접속한다.
 
@@ -108,23 +122,31 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 Python 3.12 가 서버에 없어도 괜찮다. `uv sync` 가 알아서 내려받는다.
 
+메모리가 2GB 이하인 서버는 스왑이 없으면 `uv sync` 같은 작업이 겹칠 때 프로세스가 강제 종료될 수 있다. 스왑이 없으면(`swapon --show` 결과가 비어 있으면) 관리자와 상의해 만든다.
+
+```bash
+sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
 ---
 
 ## 3. 저장소 내려받기
 
-이 저장소에는 아직 원격(GitHub)이 없다. 아래 두 방법 중 하나를 고른다.
+저장소는 GitHub 공개 저장소다(2026-10-08 공개 전환). 아래 두 방법 중 하나를 고른다. 보통은 (가)를 쓴다.
 
-### (가) GitHub 비공개 저장소를 쓰는 경우
+### (가) GitHub 에서 받는 경우 (권장)
 
-PC 에서 GitHub 에 **비공개(Private)** 저장소를 만들고 올린 뒤, 서버에서:
+공개 저장소라 서버에 토큰이나 키를 두지 않고 받을 수 있다. 서버에서:
 
 ```bash
 cd ~
-git clone https://github.com/<계정>/<저장소이름>.git Yangju
+git clone https://github.com/jinseojang0903/yangju-bus-forecast.git Yangju
 ```
 
-비공개 저장소는 비밀번호 대신 GitHub 토큰(Personal access token)을 물어본다.
 코드를 고친 뒤 서버에 반영할 때는 `cd ~/Yangju && git pull` 을 실행하고 7장의 `sudo systemctl restart yangju-collector` 를 실행한다.
+서버에는 쓰기 권한(토큰·배포 키)을 두지 않는다. 서버에서 커밋·푸시하지 않는다.
 
 ### (나) zip 으로 복사하는 경우 (GitHub 없이)
 
@@ -134,7 +156,7 @@ PC 의 PowerShell 에서 저장소 폴더로 이동해 zip 을 만들고 서버�
 ```powershell
 cd "D:\OneDrive - YoungLimWonSoftLab\바탕 화면\Yangju"
 git archive --format=zip -o yangju.zip HEAD
-scp -i "<키파일경로>" yangju.zip ubuntu@<서버IP>:~/
+scp -i "<키파일경로>" yangju.zip <사용자>@<서버IP>:~/
 ```
 
 서버에서 풀기:
@@ -162,7 +184,7 @@ install -m 600 /dev/null ~/Yangju/backend/.env
 
 ```powershell
 cd "D:\OneDrive - YoungLimWonSoftLab\바탕 화면\Yangju"
-scp -i "<키파일경로>" backend\.env ubuntu@<서버IP>:~/Yangju/backend/.env
+scp -i "<키파일경로>" backend\.env <사용자>@<서버IP>:~/Yangju/backend/.env
 ```
 
 서버에서 권한을 한 번 더 확인한다(`-rw-------` 이면 정상):
@@ -214,7 +236,15 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now yangju-collector
 ```
 
-서버가 재부팅되어도 자동으로 다시 시작된다. 코드를 바꾼 뒤에는:
+서비스 파일은 사용자 이름 `ubuntu`(`User=ubuntu`, `/home/ubuntu/...`) 기준이다. 사용자 이름이 다르면(Azure 등) 복사 대신 이름을 바꿔 설치한다:
+
+```bash
+sed "s#ubuntu#$(whoami)#g" ~/Yangju/deploy/yangju-collector.service | sudo tee /etc/systemd/system/yangju-collector.service >/dev/null
+sudo systemctl daemon-reload
+sudo systemctl enable --now yangju-collector
+```
+
+서버가 재부팅되어도 자동으로 다시 시작된다. 수집기가 죽으면 10초 뒤 다시 뜬다(`Restart=always`). 코드를 바꾼 뒤에는:
 
 ```bash
 sudo systemctl restart yangju-collector
@@ -244,7 +274,7 @@ PC 의 PowerShell 에서 새 zip 을 만들어 보낸다(**커밋된 내용만**
 ```powershell
 cd "D:\OneDrive - YoungLimWonSoftLab\바탕 화면\Yangju"
 git archive --format=zip -o yangju.zip HEAD
-scp -i "<키파일경로>" yangju.zip ubuntu@<서버IP>:~/
+scp -i "<키파일경로>" yangju.zip <사용자>@<서버IP>:~/
 ```
 
 서버에서 덮어써 풀고 재시작한다(`-o` 는 묻지 않고 덮어쓰기. `data/`·`backend/.env` 는 zip 에 없으므로 그대로 남는다):
@@ -333,13 +363,13 @@ tail -n 50 ~/Yangju/data/logs/collector.log
 ```powershell
 cd "D:\OneDrive - YoungLimWonSoftLab\바탕 화면\Yangju"
 New-Item -ItemType Directory -Force .\backup | Out-Null
-scp -i "<키파일경로>" -r ubuntu@<서버IP>:~/Yangju/data/collected/<날짜> .\backup\
+scp -i "<키파일경로>" -r <사용자>@<서버IP>:~/Yangju/data/collected/<날짜> .\backup\
 ```
 
 `<날짜>` 는 `2026-10-07` 형식이다. 상태 파일도 함께 보관하려면:
 
 ```powershell
-scp -i "<키파일경로>" ubuntu@<서버IP>:~/Yangju/data/collected/status.json .\backup\status-<날짜>.json
+scp -i "<키파일경로>" <사용자>@<서버IP>:~/Yangju/data/collected/status.json .\backup\status-<날짜>.json
 ```
 
 `backup` 폴더는 저장소 안에 있으므로 커밋하지 않도록 주의한다(필요하면 저장소 밖 폴더로 바꿔도 된다).
@@ -349,6 +379,9 @@ scp -i "<키파일경로>" ubuntu@<서버IP>:~/Yangju/data/collected/status.json
 ## 10. 서버 준비 전까지 이 PC 에서 임시로 돌리기
 
 0장 경고: 서버와 동시에 돌리지 않는다.
+
+지금은 서버에서 돌고 있으므로 이 장은 서버 장애 때의 비상용이다. PC 에서 돌릴 때는 **직접 연 PowerShell 창이나 작업 스케줄러**로만 실행한다.
+AI 코딩 도구(Claude Code 등)의 백그라운드 작업으로 띄우면 PC 메모리가 부족할 때 도구가 작업을 정리하면서 수집기도 함께 꺼진다(2026-10-07 09:07 에 이렇게 끊겨 1시간 분량을 잃었다).
 
 ### 먼저: 수집 폴더를 OneDrive 밖으로 옮기기
 
