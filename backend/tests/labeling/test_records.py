@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from app.core.settings import KST
-from app.labeling.records import extract_positions, load_raw_poll
+from app.labeling.records import ReadStats, extract_positions, load_raw_poll
 from tests.labeling.helpers import (
     G1300,
     arrival_line,
@@ -106,3 +106,30 @@ def test_no_result_response_is_not_a_failure(tmp_path: Path) -> None:
     records, stats = load_raw_poll(path, include_trial=False)
     assert records == []
     assert stats.failed_location_lines == 0
+
+
+def test_read_stats_merge_adds_every_count() -> None:
+    total = ReadStats(lines=1, broken_lines=1, items=2, interval_secs={10})
+    total.merge(
+        ReadStats(
+            lines=5,
+            broken_lines=1,
+            location_lines=4,
+            failed_location_lines=1,
+            trial_lines_skipped=2,
+            items=7,
+            skipped_items=1,
+            interval_secs={30, None},
+        )
+    )
+
+    assert total == ReadStats(
+        lines=6,
+        broken_lines=2,
+        location_lines=4,
+        failed_location_lines=1,
+        trial_lines_skipped=2,
+        items=9,
+        skipped_items=1,
+        interval_secs={10, 30, None},
+    )

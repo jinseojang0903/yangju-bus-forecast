@@ -55,6 +55,17 @@ class ReadStats:
     skipped_items: int = 0  # vehId·stationSeq·routeId 가 없는 항목
     interval_secs: set[int | None] = field(default_factory=set)
 
+    def merge(self, other: "ReadStats") -> None:
+        """other 의 집계를 이 집계에 더한다(여러 날 파일을 읽을 때 합계용)."""
+        self.lines += other.lines
+        self.broken_lines += other.broken_lines
+        self.location_lines += other.location_lines
+        self.failed_location_lines += other.failed_location_lines
+        self.trial_lines_skipped += other.trial_lines_skipped
+        self.items += other.items
+        self.skipped_items += other.skipped_items
+        self.interval_secs |= other.interval_secs
+
 
 def as_int(value: Any) -> int | None:
     if isinstance(value, bool):

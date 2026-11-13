@@ -1,7 +1,14 @@
-"""모델링 담당자와 합의할 계산 함수의 입출력(회의용 초안, 본문 미구현).
+"""모델링 담당자와 합의할 계산 함수의 입출력(회의용 초안).
 
-사례 검색·예보·구간 소요시간 계산의 시그니처와 데이터 모양만 정한다. 구현은 합의 후에 한다.
+사례 검색·예보·구간 소요시간 계산의 시그니처와 데이터 모양을 정한다.
 같은 내용을 docs/compute-interface.md 에 표로 정리했다.
+
+구현 상태
+- compute_case_features: app/forecast/case_features.py (actual_arrival 기준만, 2026-11-13)
+- search_cases: app/forecast/case_search.py (2026-11-13)
+- forecast_bus, segment_p90: 이 모듈에 시그니처만 있다(본문 미구현).
+구현 모듈이 이 모듈의 데이터 모양을 가져다 쓰므로, 순환 import 를 피하려고 구현된 함수는
+여기서 다시 내보내지 않는다. 각 구현 모듈에서 직접 가져온다.
 
 이름 기준
 - 계산 함수의 입출력 필드 이름은 DB 스키마 v2(case_feature, eval_forecast, forecast_snapshot,
@@ -20,8 +27,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Literal
 
-from app.core.settings import CASE_FEATURE_RULE_VERSION, ArrivalRules, ForecastRules
-from app.labeling.targets import TargetStop
+from app.core.settings import ArrivalRules, ForecastRules
 from app.labeling.trips import Trip
 from app.schemas.common import ArrivalEstimateSource, BusSource, ForecastStatus
 
@@ -171,53 +177,6 @@ class SegmentTimeRecord:
     duration_sec: int
     is_trial: bool
     is_holiday: bool
-
-
-def compute_case_features(
-    trip: Trip,
-    target_station: TargetStop,
-    lead_time_min: int,
-    reference_basis: ReferenceBasis,
-    rule_version: str = CASE_FEATURE_RULE_VERSION,
-) -> CaseFeature:
-    """운행편 trip 이 target_station 에 도착하기 lead_time_min 분 전 시점의 특징.
-
-    입력
-    - trip: app.labeling.trips.Trip(같은 날·노선·차량의 위치 기록 묶음)
-    - target_station: 목표 정류장과 그 노선 순번(app.labeling.targets.TargetStop)
-    - lead_time_min: settings.FORECAST_RULES.lead_times_min 중 하나
-    - reference_basis: 시점 기준(ReferenceBasis)
-    - rule_version: 특징 계산 규칙 버전. API rulesVersion 과 따로 둔다
-
-    출력: CaseFeature. 기준 시각·잔여석·앞차 간격 중 하나라도 정할 수 없으면
-    computable=False 와 uncomputable_reason(UncomputableReason, missing_input 의 근거).
-
-    합의할 것: 앞차 간격 계산 방법(같은 노선 앞차가 같은 정류장을 지난 시각과의 차),
-    '그 시점'의 기록을 고르는 방법(그 시점 이전 마지막 기록 등).
-    """
-    raise NotImplementedError
-
-
-def search_cases(
-    feature: CaseFeature,
-    history: Sequence[LabeledCase],
-    rules: ForecastRules,
-) -> CaseSearchResult:
-    """feature 와 비슷한 지난 사례를 찾는다(CLAUDE.md '사례 검색과 확률').
-
-    - 필터: 노선·목표 정류장·선행시간 일치, confirmed_at < feature.reference_at
-      (예보 시점 전에 정답이 확정된 운행만, 같은 날 앞선 운행 포함), 정답 미확인 제외
-    - 허용폭: 잔여석 ±rules.seat_tolerance, 앞차 간격 ±rules.headway_tolerance_min
-    - 거리: |잔여석 차| ÷ rules.seat_distance_divisor
-      + |간격 차| ÷ rules.headway_distance_divisor
-    - 선택: 가까운 순 최대 rules.max_cases 건, 운행당 1건, 거리가 같으면 최근 운행 우선
-    - n < rules.min_cases_to_show 이면 status insufficient_cases
-    - feature.computable 이 False 이면 status missing_input, n = k = 0
-    - 정답으로 쓸 등급(strict 만 / relaxed 포함)은 회의 안건
-
-    출력: CaseSearchResult(n, k, case_trip_keys, status).
-    """
-    raise NotImplementedError
 
 
 def forecast_bus(

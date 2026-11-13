@@ -477,6 +477,9 @@ RULES_VERSION: Final = "2026-10-06.1"
 # case_feature.rule_version: 사례 특징(기준 시각·잔여석·간격) 계산 규칙 버전.
 # RULES_VERSION 과 따로 둬, 선행시간 선택만 바뀌면 특징을 다시 계산하지 않는다.
 CASE_FEATURE_RULE_VERSION: Final = "case-feature-v1"
+# trip_label.rule_version: 정답 라벨 규칙 해석(app/labeling/labels.py) 버전.
+# 사례(LabeledCase)와 평가 행(eval_forecast.label_rule_version)에 남긴다.
+LABEL_RULE_VERSION: Final = "f06-v1"
 # 화면에 쓸 선행시간 선택 규칙(계약 2.1절).
 # latest_issued: 이미 시점이 지난(issuedAt 이 있는) 예보 중 가장 최근 것.
 LEAD_TIME_SELECTION_RULE: Final = "latest_issued"
@@ -505,6 +508,11 @@ NO_SEAT_PROBABILITY_DECIMALS: Final = 4
 SERVICE_OUTSIDE_MESSAGE: Final = "지금은 예보 시간이 아니에요"
 # 수집 데이터가 이보다 오래되면 stale(계약 1.3·10장, 초기 60초).
 STALE_AFTER_SEC: Final = 60
+# 사례 특징의 '그 시점' 기록: 기준 시각(reference_at) 이하 마지막 위치 기록이 기준 시각보다
+# 이 값(초)을 넘게 오래됐으면 no_record_near_reference 로 둔다.
+# 결정 2026-11-13(데이터를 보기 전에 고정). 지금은 STALE_AFTER_SEC 와 같은 값이지만 실시간 stale
+# 기준과 따로 움직인다. 이 값을 바꾸면 CASE_FEATURE_RULE_VERSION 을 올린다.
+CASE_FEATURE_REFERENCE_MAX_AGE_SEC: Final = 60
 # 스냅샷 캐시(계약 1.3절): (정류장, 목적지, 마감) 조합별 10초.
 SNAPSHOT_CACHE_TTL_SEC: Final = 10
 SNAPSHOT_CACHE_MAX_ENTRIES: Final = 1024

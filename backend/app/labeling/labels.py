@@ -25,7 +25,7 @@ from enum import StrEnum
 
 from app.labeling.constants import STATE_ARRIVED, STATE_DEPARTED
 from app.labeling.records import PositionRecord
-from app.labeling.trips import Trip
+from app.labeling.trips import Trip, first_reach_index
 
 
 class Grade(StrEnum):
@@ -102,7 +102,7 @@ def label_trip(trip: Trip, target_seq: int) -> TripLabel:
     prev_seq = target_seq - 1
     records = trip.records
 
-    arrival_index = next((i for i, r in enumerate(records) if r.station_seq >= target_seq), None)
+    arrival_index = first_reach_index(records, target_seq)
     arrival_at = records[arrival_index].collected_at if arrival_index is not None else None
 
     def result(

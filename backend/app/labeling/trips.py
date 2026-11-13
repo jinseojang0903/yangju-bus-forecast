@@ -8,7 +8,7 @@
 """
 
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -53,6 +53,16 @@ class Trip:
     def interval_secs(self) -> tuple[int, ...]:
         """기록에 남은 수집 간격(초)들. 오름차순, 중복 없음. 간격이 없는 기록은 뺀다."""
         return tuple(sorted({r.interval_sec for r in self.records if r.interval_sec is not None}))
+
+
+def first_reach_index(records: Sequence[PositionRecord], station_seq: int) -> int | None:
+    """수집 시각 순 기록에서 정류장 순번이 station_seq 이상인 첫 기록의 위치. 없으면 None.
+
+    '그 정류장에 닿았다'의 공통 정의다. 정답 라벨의 도착(labels.label_trip)과 사례 특징의
+    도착·통과 시각(forecast.case_features)이 같은 정의를 쓰도록 한 곳에 둔다.
+    정류장을 건너뛰어 더 큰 순번으로 잡힌 기록도 닿은 것으로 본다.
+    """
+    return next((i for i, r in enumerate(records) if r.station_seq >= station_seq), None)
 
 
 def _is_new_trip(

@@ -20,6 +20,8 @@ coverage/
 data/raw/
 data/collected/
 data/logs/
+# 백테스트 결과 CSV(수집 데이터 파생물, app.evaluation --out)
+data/backtest/
 backup/
 
 # 노트북 체크포인트

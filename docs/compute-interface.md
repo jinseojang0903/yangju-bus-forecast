@@ -1,7 +1,8 @@
 # 계산 함수 입출력 (회의용 초안, 2026-10-06)
 
 > 모델링 담당자와 백엔드가 10/7 회의에서 합의할 **사례 검색·예보·구간 소요시간 계산 함수의 입출력**이다.
-> 코드는 `backend/app/forecast/interfaces.py` 에 시그니처·데이터 모양·설명만 있고 본문은 비어 있다(`NotImplementedError`).
+> 데이터 모양은 `backend/app/forecast/interfaces.py` 에 있다. `forecast_bus`·`segment_p90` 은 그 파일에 시그니처·설명만 있고 본문은 비어 있다(`NotImplementedError`).
+> `compute_case_features`(`app/forecast/case_features.py`, `actual_arrival` 기준만)와 `search_cases`(`app/forecast/case_search.py`)는 2026-11-13 에 구현했다. 그때 고정한 정의는 4장에 적었다.
 > 이미 구현된 규칙 함수(선행시간 선택, 위험 등급, 대안 결정, 서비스 시간)는 맨 아래 5장에 정리했다.
 
 ## 0. 이름 기준
@@ -16,12 +17,14 @@
 
 | 함수 | 입력 | 출력 | 하는 일 |
 |---|---|---|---|
-| `compute_case_features` | `trip`(운행편), `target_station`(목표 정류장·순번), `lead_time_min`, `reference_basis`, `rule_version` | `CaseFeature`(case_feature 한 행) | 운행편이 목표 정류장 도착 L분 전일 때의 잔여석·앞차 간격 |
+| `compute_case_features` | `trip`(운행편), `target_station`(목표 정류장·순번), `lead_time_min`, `reference_basis`, `rule_version`, (키워드) `day_trips` | `CaseFeature`(case_feature 한 행) | 운행편이 목표 정류장 도착 L분 전일 때의 잔여석·앞차 간격 |
 | `search_cases` | `feature`(CaseFeature), `history`(LabeledCase 목록), `rules`(ForecastRules) | `CaseSearchResult(n, k, case_trip_keys, status)` | 비슷한 지난 사례를 찾아 n·k 를 센다 |
 | `forecast_bus` | `bus_state`(BusState), `now`, `rules`, (키워드) `history`, `publish_decisions` | `list[Forecast]`(선행시간마다 1개, 항상 3개) | 버스 한 대의 선행시간별 예보 |
 | `segment_p90` | `route`(routeId), `time_bin`("HH:MM" 30분대), `history`(SegmentTimeRecord 목록), `rules`(ArrivalRules) | 초(`int`) 또는 `None` | 구간 소요시간 90백분위. 기록 10회 미만이면 `None` |
 
 `forecast_bus` 의 `history`·`publish_decisions` 는 처음 요청한 시그니처(`bus_state, now, rules`)에 키워드 인자로 더했다. 사례 검색 입력과 공개 판정 결과가 필요하기 때문이다.
+
+`compute_case_features` 의 `day_trips: Sequence[Trip] = ()` 는 2026-11-13 에 키워드 인자로 더했다. 앞차 간격을 '같은 날·같은 노선의 바로 앞 운행편이 같은 정류장을 지난 시각과의 차'로 고정해(4장) 그날의 다른 운행편 목록이 필요하기 때문이다. 같은 날·같은 노선의 다른 운행편만 골라 쓰므로 그날 전체를 그대로 넘겨도 되고, 시운전·공휴일 운행편도 실제로 앞서 달린 차량이라 빼지 않고 넘긴다. 넘기지 않으면 앞차가 없는 것으로 본다(`no_preceding_vehicle`). `reference_basis="predicted_arrival"` 은 도착 API 기록이 필요해 아직 `NotImplementedError` 다.
 
 ## 2. 데이터 모양
 
@@ -36,10 +39,10 @@
 | lead_time_min | int | 선행시간(5·10·15) |
 | reference_at | datetime \| None | 도착 L분 전 시점(KST). 도착 시각을 정할 수 없으면 None |
 | reference_basis | `actual_arrival` \| `predicted_arrival` | 시점 기준. 지난 운행은 실제 도착, 지금 운행은 도착 예상 |
-| seats | int \| None | 그 시점 잔여석(−1·없음이면 None) |
+| seats | int \| None | 그 시점 잔여석(−1·없음이면 None). 0 은 '0석'이고 None 은 '모름'이다 |
 | headway_min | float \| None | 그 시점 앞차 간격(분) |
 | computable | bool | 기준 시각·잔여석·앞차 간격을 모두 정했으면 true |
-| uncomputable_reason | 아래 5종 \| None | computable 이 false 일 때만. 스키마 CHECK 값과 같다 |
+| uncomputable_reason | 아래 5종 \| None | computable 이 false 일 때만. 스키마 CHECK 값과 같다. 4장의 확인 순서에서 처음 걸린 사유 하나이고, 걸리기 전에 정한 값(reference_at, seats)은 그대로 담는다 |
 | rule_version | str | 특징 계산 규칙 버전. 기본값 `settings.CASE_FEATURE_RULE_VERSION`(API rulesVersion 과 별개) |
 
 uncomputable_reason(초안 코드, 회의에서 확정):
@@ -147,12 +150,31 @@ uncomputable_reason(초안 코드, 회의에서 확정):
 
 | 항목 | 내용 |
 |---|---|
-| 앞차 간격 | 같은 노선 앞차가 같은 정류장을 지난 시각과의 차로 볼지, 위치 기록의 순번 차로 볼지 |
-| '그 시점' 기록 | reference_at 이전 마지막 기록을 쓸지, 가장 가까운 기록을 쓸지. 허용 시차 |
-| uncomputable_reason 코드 | 스키마 초안 5종(2.1절)으로 충분한지 |
-| 정답 등급 | strict 만 쓸지, relaxed 도 쓸지(계약 10장 미정과 같음) |
+| 앞차 간격 | **결정(2026-11-13)**: 아래 '고정한 정의'의 4번. 같은 노선 앞 운행편이 같은 정류장을 지난 시각과의 차로 본다(순번 차로 보지 않는다) |
+| '그 시점' 기록 | **결정(2026-11-13)**: 아래 '고정한 정의'의 2번. reference_at 이하 마지막 기록, 허용 시차 60초(`settings.CASE_FEATURE_REFERENCE_MAX_AGE_SEC`. 지금은 `STALE_AFTER_SEC` 와 같은 값이지만 실시간 stale 기준과 따로 움직이며, 바꾸면 `CASE_FEATURE_RULE_VERSION` 을 올린다) |
+| uncomputable_reason 코드 | 스키마 초안 5종(2.1절)을 그대로 쓴다. '내 버스의 통과 시각을 관측하지 못함'은 새 코드를 만들지 않고 `no_record_near_reference` 로 둔다(결정 2026-11-13). `no_arrival_estimate` 는 `predicted_arrival` 을 구현할 때 쓴다 |
+| 정답 등급 | strict 만 쓸지, relaxed 도 쓸지(계약 10장 미정과 같음). 백테스트(`python -m app.evaluation backtest`)는 기본 strict+relaxed, `--strict-only` 로 strict 만 쓴다 |
 | 90백분위 계산 | 보간(선형) 여부, 같은 운행편 중복 처리 |
-| 함수 시그니처 | forecast_bus 에 더한 `history`·`publish_decisions` 인자, compute_case_features 의 `rule_version` 인자(기본 `CASE_FEATURE_RULE_VERSION`) |
+| 함수 시그니처 | forecast_bus 에 더한 `history`·`publish_decisions` 인자, compute_case_features 의 `rule_version` 인자(기본 `CASE_FEATURE_RULE_VERSION`). compute_case_features 의 `day_trips` 키워드 인자는 **결정(2026-11-13)** 으로 더했다(1장) |
+
+### 사례 특징: 고정한 정의(결정 2026-11-13)
+
+수집 데이터를 보기 전에 정한 값이다. 결과가 나쁘게 나와도 바꾸지 않는다. 바꿔야 하면 `settings.CASE_FEATURE_RULE_VERSION` 을 올린다. 코드는 `backend/app/forecast/case_features.py`.
+
+1. **도착 시각** = 운행편에서 `station_seq >= 목표 순번` 인 첫 기록의 `collected_at`. 정답 라벨의 도착과 같은 정의이며 같은 함수(`app/labeling/trips.py` 의 `first_reach_index`)를 쓴다. 없으면 `no_target_arrival`. **기준 시각** `reference_at` = 도착 시각 − L분.
+2. **'그 시점' 기록** = 그 운행편에서 `collected_at <= reference_at` 인 마지막 기록. 없거나 reference_at 보다 60초 넘게 오래됐으면 `no_record_near_reference`(정확히 60초는 쓴다).
+3. **잔여석** = 그 기록의 `remain_seat_cnt`. 없거나 음수(−1)면 `seat_unknown`. 0 과 −1 을 섞지 않는다. 앞 기록으로 물러서지 않는다.
+4. **앞차 간격(분)** = 그 기록의 정류장 순번을 s 라 할 때 (내 버스가 s 에 처음 닿은 시각) − (같은 날·같은 노선의 바로 앞 운행편이 s 에 처음 닿은 시각).
+   - '처음 닿은 시각' = 그 운행편에서 `station_seq >= s` 인 첫 기록의 시각. 그 앞에 `station_seq < s` 인 기록이 있어야 관측된 것으로 본다(첫 기록부터 s 이상이면 통과 시각을 모르므로 후보에서 뺀다).
+   - 앞 운행편 = s 통과 시각이 내 통과 시각보다 이른 것 중 가장 늦은 운행편. 시운전·공휴일 운행편도 앞차로는 쓴다.
+   - 같은 수집 시각에 통과한 것으로 관측된 운행편은 앞차로 보지 않는다(한 번의 호출 안에서는 순서를 알 수 없다).
+   - 통과 시각은 모두 reference_at 이하여야 한다(미래 정보 누출 금지).
+   - 내 통과 시각이 관측되지 않았으면 `no_record_near_reference`, 앞 운행편이 없으면 `no_preceding_vehicle`.
+
+아래는 위 결정에 없어 구현하면서 정한 해석이다(확인 필요).
+
+- **확인 순서**: 1 → 2 → 3 → 4 순서로 확인하고 처음 걸린 사유 하나만 남긴다. 걸리기 전에 정한 값은 담는다(예: 앞차가 없어도 `seats` 는 값이 있다). 백테스트의 단순 기준(잔여석만 보는 방법)이 이 `seats` 를 쓴다.
+- **간격 값**: 초 단위 차를 60 으로 나눈 값을 반올림 없이 쓴다. `search_cases` 는 분 단위 float 오차(예: 310/60 − 130/60 = 3.0000000000000004)로 경계가 흔들리지 않게 간격을 정수 밀리초로 바꿔 허용폭과 비교하고, 거리는 분수로 정확히 계산한다(정확히 180초 차는 포함, 181초는 제외). DB `case_feature.headway_min` 은 numeric(6,2) 라 저장하면 소수 둘째 자리로 반올림된다. 허용폭 경계(±3분)에서 메모리 값과 DB 값의 결과가 달라질 수 있으므로, DB 적재를 구현할 때 어느 쪽으로 맞출지 정한다.
 
 ## 5. 이미 구현된 규칙 함수(백엔드, 순수 함수)
 
